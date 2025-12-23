@@ -198,20 +198,25 @@ const fetchClientSide = async (): Promise<FundData[]> => {
 export const fetchQDIIFunds = async (): Promise<FundData[]> => {
   // 1. Try Backend
   try {
-    // Add a very short timeout for localhost check so it doesn't block UI for long if backend is missing
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1000);
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
     
-    const response = await fetch(BACKEND_URL, { signal: controller.signal });
+    const response = await fetch(BACKEND_URL, { 
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
     clearTimeout(timeoutId);
 
     if (response.ok) {
       console.log("Using Python Backend Data");
-      return await response.json();
+      const data = await response.json();
+      console.log("Backend response:", data);
+      return data;
     }
   } catch (error) {
-    // Backend fetch failed (server not running), proceed to client-side fallback
-    console.log("Python Backend unavailable, switching to Client-side Mode.");
+    console.log("Python Backend unavailable, switching to Client-side Mode.", error);
   }
 
   // 2. Fallback to Client Side
