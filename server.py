@@ -2,9 +2,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import asyncio
+import re
 from datetime import datetime
 from typing import List, Dict, Optional
 import logging
+from html import unescape
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,7 +39,7 @@ QDII_FUNDS = [
     {"code": "007280", "name": "摩根日本精选股票A"},
     {"code": "008763", "name": "天弘越南市场股票A"},
     {"code": "006105", "name": "宏利印度机会股票A"},
-    {"code": "007733", "name": "摩根欧洲动力策略股票A"},
+    {"code": "006282", "name": "摩根欧洲动力策略股票A"},
     # 三、日本/亚太ETF联接（4只）
     {"code": "020712", "name": "华安日经225ETF联接A"},
     {"code": "021189", "name": "南方亚太精选ETF联接A"},
@@ -46,11 +48,11 @@ QDII_FUNDS = [
 
 FALLBACK_LIMITS = {
     # 纳斯达克100相关
-    "015299": "暂停", "019547": "暂停", "018043": "暂停", "160213": "暂停",
+    "015299": "暂停", "019547": "限100", "018043": "暂停", "160213": "暂停",
     "270042": "暂停", "000834": "暂停", "040046": "暂停", "019441": "暂停",
     "019172": "暂停", "002732": "暂停", "161130": "暂停",
     # 股票精选/区域市场
-    "017436": "暂停", "007280": "暂停", "008763": "暂停", "006105": "暂停", "007733": "暂停",
+    "017436": "暂停", "007280": "暂停", "008763": "暂停", "006105": "暂停", "006282": "暂停",
     # 日本/亚太ETF联接
     "020712": "暂停", "021189": "暂停", "021190": "暂停",
 }
@@ -79,7 +81,7 @@ def generate_mock_quotes() -> List[Dict]:
         "007280": (1.45, -0.8),  # 摩根日本
         "008763": (1.12, -0.3),  # 天弘越南
         "006105": (1.48, -0.5),  # 宏利印度
-        "007733": (1.35, -0.7),  # 摩根欧洲
+        "006282": (1.35, -0.7),  # 摩根欧洲
         # 日本/亚太ETF联接
         "020712": (1.55, -0.4),  # 华安日经225
         "021189": (1.28, -0.6),  # 南方亚太A
@@ -114,7 +116,7 @@ def format_limit_text(status: str, limit: float) -> str:
         return "—"
     if "暂停" in status:
         return "暂停"
-    if "限制" in status:
+    if "限制" in status or "限大额" in status:
         if 0 < limit < 1000000000000:
             if limit >= 100000000:
                 return f"限{round(limit / 100000000, 2)}亿"
@@ -125,6 +127,49 @@ def format_limit_text(status: str, limit: float) -> str:
     if "开放" in status:
         return "不限"
     return status
+
+
+def parse_fund_limit_from_html(html_content: str) -> Dict[str, str]:
+    """从东方财富网页解析基金限额信息"""
+    limits = {}
+    
+    if not html_content:
+        return limits
+    
+    try:
+        # 查找申购状态
+        purchase_status_pattern = r'<td class="th w110">申购状态</td>\s*<td class="w135">([^<]+)</td>'
+        purchase_limit_pattern = r'<td class="th w110">日累计申购限额</td>\s*<td class="w135">([\d.]+)元</td>'
+        
+        purchase_status_match = re.search(purchase_status_pattern, html_content)
+        purchase_limit_match = re.search(purchase_limit_pattern, html_content)
+        
+        if purchase_status_match:
+            status = unescape(purchase_status_match.group(1).strip())
+            
+            if "限大额" in status:
+                # 如果是限大额，查找具体限额
+                if purchase_limit_match:
+                    limit_value = float(purchase_limit_match.group(1))
+                    limits["status"] = "限制"
+                    limits["limit"] = limit_value
+                else:
+                    limits["status"] = "限制"
+                    limits["limit"] = 0
+            elif "暂停" in status:
+                limits["status"] = "暂停"
+                limits["limit"] = 0
+            elif "开放" in status:
+                limits["status"] = "开放"
+                limits["limit"] = 0
+            else:
+                limits["status"] = status
+                limits["limit"] = 0
+        
+    except Exception as e:
+        logger.warning(f"Failed to parse HTML fund limits: {e}")
+    
+    return limits
 
 
 async def fetch_quotes(client: httpx.AsyncClient) -> List[Dict]:
@@ -185,49 +230,76 @@ async def fetch_fund_limits(client: httpx.AsyncClient, codes: List[str]) -> Dict
     if not codes:
         return {}
     
-    code_str = ",".join(codes)
-    url = f"https://fundmobapi.eastmoney.com/FundMApi/FundBaseTypeInformation.ashx?FCODES={code_str}&deviceid=Wap&plat=Wap&product=EFund&version=2.0.0&_={int(datetime.now().timestamp() * 1000)}"
+    limits = {}
     
-    try:
-        response = await client.get(url, timeout=10.0)
-        response.raise_for_status()
-        data = response.json()
-        
-        limits = {}
-        datas = data.get("Datas")
-        if datas is None:
-            return {}
-        if not isinstance(datas, list):
-            return {}
+    for code in codes:
+        try:
+            url = f"https://fundf10.eastmoney.com/jjfl_{code}.html"
+            response = await client.get(url, headers={
+                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38"
+            }, timeout=10.0)
             
-        for item in datas:
-            if not isinstance(item, dict):
-                continue
-            code = item.get("FCODE")
-            status = item.get("SGZT", "")
-            limit = float(item.get("MAXSG", 0))
-            limits[code] = format_limit_text(status, limit)
-        return limits
-    except Exception as e:
-        logger.error(f"Failed to fetch fund limits: {e}")
-        return {}
+            if response.status_code == 200:
+                html_content = response.text
+                parsed_limits = parse_fund_limit_from_html(html_content)
+                
+                if parsed_limits:
+                    status = parsed_limits.get("status", "")
+                    limit_value = parsed_limits.get("limit", 0)
+                    limits[code] = format_limit_text(status, limit_value)
+                    logger.info(f"Fetched limit for {code}: {limits[code]}")
+                    
+        except Exception as e:
+            logger.warning(f"Failed to fetch limit for {code}: {e}")
+            continue
+    
+    return limits
 
 
 async def fetch_all_limits(client: httpx.AsyncClient) -> Dict[str, str]:
-    chunk_size = 20
+    # 为每个基金单独创建任务
+    all_codes = [fund["code"] for fund in QDII_FUNDS]
+    
+    # 分批处理，每批5个基金
+    chunk_size = 5
     all_limits = {}
     
-    chunks = [QDII_FUNDS[i:i + chunk_size] for i in range(0, len(QDII_FUNDS), chunk_size)]
-    code_chunks = [[fund["code"] for fund in chunk] for chunk in chunks]
+    chunks = [all_codes[i:i + chunk_size] for i in range(0, len(all_codes), chunk_size)]
     
-    tasks = [fetch_fund_limits(client, codes) for codes in code_chunks]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    for result in results:
-        if isinstance(result, dict):
-            all_limits.update(result)
+    for chunk in chunks:
+        tasks = [fetch_single_fund_limit(client, code) for code in chunk]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for result in results:
+            if isinstance(result, dict) and result:
+                all_limits.update(result)
     
     return all_limits
+
+
+async def fetch_single_fund_limit(client: httpx.AsyncClient, code: str) -> Dict[str, str]:
+    """获取单个基金的限额信息"""
+    try:
+        url = f"https://fundf10.eastmoney.com/jjfl_{code}.html"
+        response = await client.get(url, headers={
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38"
+        }, timeout=10.0)
+        
+        if response.status_code == 200:
+            html_content = response.text
+            parsed_limits = parse_fund_limit_from_html(html_content)
+            
+            if parsed_limits:
+                status = parsed_limits.get("status", "")
+                limit_value = parsed_limits.get("limit", 0)
+                limit_text = format_limit_text(status, limit_value)
+                logger.info(f"Fetched limit for {code}: {limit_text}")
+                return {code: limit_text}
+                
+    except Exception as e:
+        logger.warning(f"Failed to fetch limit for {code}: {e}")
+    
+    return {}
 
 
 @app.get("/api/funds")
