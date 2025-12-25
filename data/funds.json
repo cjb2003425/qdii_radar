@@ -83,6 +83,18 @@
     {
       "code": "012870",
       "name": "易方达纳斯达克100ETF联接(QDII-LOF)C(人民币)"
+    },
+    {
+      "code": "160216",
+      "name": "国泰大宗商品(QDII-LOF)A"
+    },
+    {
+      "code": "161226",
+      "name": "国投瑞银白银期货(LOF)A"
+    },
+    {
+      "code": "164701",
+      "name": "汇添富黄金及贵金属(QDII-LOF-FOF)A"
     }
   ],
   "config": {

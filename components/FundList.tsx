@@ -22,16 +22,19 @@ const FundList: React.FC<Props> = ({ funds, currentPage, onToggle, onDelete }) =
     <div className="flex-1 overflow-y-auto pb-4 bg-white">
       {/* Header Row */}
       <div className="flex items-center px-2 py-2 bg-gray-50 text-gray-500 text-xs border-b border-gray-200 sticky top-0 z-10">
-        <div className="w-[28%] sm:w-[25%] flex items-center gap-0.5">
+        <div className="w-[24%] sm:w-[20%] flex items-center gap-0.5">
           基金名称 <Icons.ArrowDown className="w-3 h-3" />
         </div>
-        <div className="w-[24%] sm:w-[25%] flex items-center justify-center gap-0.5 text-center leading-tight">
+        <div className="w-[19%] sm:w-[20%] flex items-center justify-center gap-0.5 text-center leading-tight">
           估值 <Icons.ArrowDown className="w-3 h-3 hidden sm:block" />
         </div>
-        <div className="w-[24%] sm:w-[25%] flex items-center justify-center text-center leading-tight">
+        <div className="w-[19%] sm:w-[20%] flex items-center justify-center text-center leading-tight">
           净值
         </div>
-        <div className="w-[24%] sm:w-[25%] flex items-center justify-center text-center">
+        <div className="w-[19%] sm:w-[20%] flex items-center justify-center text-center leading-tight">
+          溢价率
+        </div>
+        <div className="w-[19%] sm:w-[20%] flex items-center justify-center text-center">
           限额
         </div>
       </div>
@@ -41,16 +44,10 @@ const FundList: React.FC<Props> = ({ funds, currentPage, onToggle, onDelete }) =
         <>
           {/* LOF Funds Section */}
           {lofFunds.length > 0 && (
-            <div className="border-b border-gray-200">
-              <div className="px-2 py-1.5 bg-blue-50 text-blue-700 text-xs font-semibold flex items-center gap-1">
-                <span className="inline-block w-1.5 h-1.5 bg-blue-600 rounded-full"></span>
-                LOF基金 (实时行情)
-              </div>
-              <div className="flex flex-col">
-                {lofFunds.map((fund) => (
-                  <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} />
-                ))}
-              </div>
+            <div className="flex flex-col">
+              {lofFunds.map((fund) => (
+                <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} />
+              ))}
             </div>
           )}
 

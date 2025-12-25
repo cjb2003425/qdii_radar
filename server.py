@@ -131,23 +131,25 @@ def parse_fund_nav_from_html(html_content: str) -> tuple:
         # 查找净值数据
         nav_patterns = [
             r'<span class="ui-font-large[^"]*">([\d.]+)</span>',
-            r'单位净值[（\(][^）)]*[）)]：\s*<span[^>]*>([\d.]+)</span>',
+            r'单位净值（[\s\S]*?<b[^>]*>\s*([\d.]+)',
             r'单位净值[：:]\s*<span[^>]*>([\d.]+)</span>',
+            r'单位净值\([\s\S]*?<b[^>]*>\s*([\d.]+)',
             r'"DWJZ":"([\d.]+)"',
             r'DWJZ[：:]["\']?([\d.]+)["\']?',
         ]
-        
+
         nav_rate_patterns = [
             r'<span class="ui-font-middle[^"]*">([-\d.]+)%</span>',
+            r'<b[^>]*>[\s\S]*?\(\s*([-\d.]+)\s*%\s*\)',
             r'日增长率[（\(][^）)]*[）)]：\s*<span[^>]*>([-\d.]+)%</span>',
             r'日增长率[：:]\s*<span[^>]*>([-\d.]+)%</span>',
             r'"JZZZL":"([-\d.]+)"',
             r'JZZZL[：:]["\']?([-\d.]+)["\']?',
         ]
-        
+
         nav = None
         nav_rate = None
-        
+
         for pattern in nav_patterns:
             match = re.search(pattern, html_content)
             if match:
@@ -156,7 +158,7 @@ def parse_fund_nav_from_html(html_content: str) -> tuple:
                     break
                 except ValueError:
                     continue
-        
+
         for pattern in nav_rate_patterns:
             match = re.search(pattern, html_content)
             if match:
@@ -165,16 +167,16 @@ def parse_fund_nav_from_html(html_content: str) -> tuple:
                     break
                 except ValueError:
                     continue
-        
+
         if nav is not None:
             logger.info(f"Successfully parsed NAV: {nav}, {nav_rate}")
             return nav, nav_rate if nav_rate is not None else 0
         else:
             logger.warning("Failed to find NAV in HTML")
-            
+
     except Exception as e:
         logger.warning(f"Failed to parse HTML fund NAV: {e}")
-    
+
     return None, None
 
 
@@ -237,36 +239,35 @@ async def fetch_quotes_for_codes(client: httpx.AsyncClient, codes: List[str]) ->
     quotes = []
 
     # 尝试获取场内基金数据（LOF基金）
+    # 自动检测LOF基金：尝试从Eastmoney API获取实时数据
     try:
-        lof_codes = [code for code in codes if code.startswith(('161130', '002732'))]
-        if lof_codes:
-            secids = []
-            for code in lof_codes:
-                prefix = "1" if code.startswith(("5", "6")) else "0"
-                secids.append(f"{prefix}.{code}")
+        secids = []
+        for code in codes:
+            prefix = "1" if code.startswith(("5", "6")) else "0"
+            secids.append(f"{prefix}.{code}")
 
-            secid_str = ",".join(secids)
-            url = f"https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f15,f16,f17,f18&secids={
-                secid_str}&_={int(datetime.now().timestamp() * 1000)}"
+        secid_str = ",".join(secids)
+        url = f"https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f15,f16,f17,f18&secids={
+            secid_str}&_={int(datetime.now().timestamp() * 1000)}"
 
-            response = await client.get(url, headers={
-                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38"
-            }, timeout=10.0)
+        response = await client.get(url, headers={
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38"
+        }, timeout=10.0)
 
-            if response.status_code == 200:
-                data = response.json()
-                if data and 'data' in data and 'diff' in data['data']:
-                    for item in data['data']['diff']:
-                        if item.get('f12') and item.get('f2'):
-                            quotes.append({
-                                "f12": item.get('f12'),
-                                "f2": item.get('f2', 0),
-                                "f3": item.get('f3', 0),
-                                "f17": item.get('f17', item.get('f2', 0)),
-                                "f18": item.get('f18', item.get('f2', 0))
-                            })
-                    logger.info(
-                        f"Fetched {len(quotes)} real-time quotes from Eastmoney API")
+        if response.status_code == 200:
+            data = response.json()
+            if data and 'data' in data and 'diff' in data['data']:
+                for item in data['data']['diff']:
+                    if item.get('f12') and item.get('f2'):
+                        quotes.append({
+                            "f12": item.get('f12'),
+                            "f2": item.get('f2', 0),
+                            "f3": item.get('f3', 0),
+                            "f17": item.get('f17', item.get('f2', 0)),
+                            "f18": item.get('f18', item.get('f2', 0))
+                        })
+                logger.info(
+                    f"Fetched {len(quotes)} real-time quotes from Eastmoney API")
 
     except Exception as e:
         logger.warning(f"Failed to fetch from market API: {e}")
@@ -277,38 +278,36 @@ async def fetch_quotes_for_codes(client: httpx.AsyncClient, codes: List[str]) ->
 async def fetch_quotes(client: httpx.AsyncClient) -> List[Dict]:
     quotes = []
 
-    # 尝试获取场内基金数据（LOF基金）
+    # 尝试获取所有基金的实时数据（自动检测LOF基金）
     try:
-        codes = [fund['code']
-                 for fund in QDII_FUNDS if fund['code'].startswith(('161130', '002732'))]
-        if codes:
-            secids = []
-            for code in codes:
-                prefix = "1" if code.startswith(("5", "6")) else "0"
-                secids.append(f"{prefix}.{code}")
+        codes = [fund['code'] for fund in QDII_FUNDS]
+        secids = []
+        for code in codes:
+            prefix = "1" if code.startswith(("5", "6")) else "0"
+            secids.append(f"{prefix}.{code}")
 
-            secid_str = ",".join(secids)
-            url = f"https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f15,f16,f17,f18&secids={
-                secid_str}&_={int(datetime.now().timestamp() * 1000)}"
+        secid_str = ",".join(secids)
+        url = f"https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f15,f16,f17,f18&secids={
+            secid_str}&_={int(datetime.now().timestamp() * 1000)}"
 
-            response = await client.get(url, headers={
-                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38"
-            }, timeout=10.0)
+        response = await client.get(url, headers={
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38"
+        }, timeout=10.0)
 
-            if response.status_code == 200:
-                data = response.json()
-                if data and 'data' in data and 'diff' in data['data']:
-                    for item in data['data']['diff']:
-                        if item.get('f12') and item.get('f2'):
-                            quotes.append({
-                                "f12": item.get('f12'),
-                                "f2": item.get('f2', 0),
-                                "f3": item.get('f3', 0),
-                                "f17": item.get('f17', item.get('f2', 0)),
-                                "f18": item.get('f18', item.get('f2', 0))
-                            })
-                    logger.info(
-                        f"Fetched {len(quotes)} real-time quotes from Eastmoney API")
+        if response.status_code == 200:
+            data = response.json()
+            if data and 'data' in data and 'diff' in data['data']:
+                for item in data['data']['diff']:
+                    if item.get('f12') and item.get('f2'):
+                        quotes.append({
+                            "f12": item.get('f12'),
+                            "f2": item.get('f2', 0),
+                            "f3": item.get('f3', 0),
+                            "f17": item.get('f17', item.get('f2', 0)),
+                            "f18": item.get('f18', item.get('f2', 0))
+                        })
+                logger.info(
+                    f"Fetched {len(quotes)} real-time quotes from Eastmoney API")
 
     except Exception as e:
         logger.warning(f"Failed to fetch from market API: {e}")
@@ -617,15 +616,13 @@ async def get_qdii_funds(codes: str = None):
             nav_val = float(pre_close_nav) if pre_close_nav != "-" else 0
             rate_val = float(rate) if rate != "-" else 0
 
-            valuation = nav_val if nav_val > 0 else price_val
-            premium_rate = ((price_val - valuation) / valuation *
-                            100) if price_val > 0 and valuation > 0 else 0
+            valuation = price_val if price_val > 0 else nav_val
 
-            fund["marketPrice"] = round(price_val, 4)
-            fund["marketPriceRate"] = round(rate_val, 2)
             fund["valuation"] = round(valuation, 4)
             fund["valuationRate"] = round(rate_val, 2)  # Add valuation rate
-            fund["premiumRate"] = round(premium_rate, 2)
+            fund["marketPrice"] = round(price_val, 4)
+            fund["marketPriceRate"] = round(rate_val, 2)
+            fund["premiumRate"] = 0  # Will be calculated after NAV is fetched
         except (ValueError, ZeroDivisionError):
             pass
 
@@ -636,10 +633,16 @@ async def get_qdii_funds(codes: str = None):
             if "nav" in limit_data:
                 nav = limit_data["nav"]
                 nav_rate = limit_data.get("nav_rate", 0)
-                
+
                 # NAV data should go to marketPrice (净值) not valuation (估值)
                 funds_map[code]["marketPrice"] = round(nav, 4)
                 funds_map[code]["marketPriceRate"] = round(nav_rate, 2)
+
+                # Recalculate premium rate after NAV update
+                valuation = funds_map[code].get("valuation", 0)
+                if valuation > 0 and nav > 0:
+                    premium_rate = ((valuation - nav) / nav) * 100
+                    funds_map[code]["premiumRate"] = round(premium_rate, 2)
 
     funds = list(funds_map.values())
     funds.sort(key=lambda x: (-x["marketPrice"] == 0, -x["premiumRate"]))
