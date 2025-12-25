@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import FundList from './components/FundList';
-import { FundData } from './types';
+import FundManager from './components/FundManager';
+import { FundData } from './types/fund';
 import { fetchQDIIFunds } from './services/fundService';
+import { initializeFunds, removeUserFund } from './services/userFundService';
 
 const App: React.FC = () => {
   const [funds, setFunds] = useState<FundData[]>([]);
@@ -11,6 +13,9 @@ const App: React.FC = () => {
     const loadFunds = async () => {
       setLoading(true);
       try {
+        // 初始化预设基金（仅第一次）
+        initializeFunds();
+        
         const data = await fetchQDIIFunds();
         setFunds(data);
       } catch (error) {
@@ -27,6 +32,43 @@ const App: React.FC = () => {
     setFunds(prev => prev.map(f => 
       f.id === id ? { ...f, isWatchlisted: !f.isWatchlisted } : f
     ));
+  };
+
+  const handleFundAdded = (code: string, name: string) => {
+    // Reload funds when a new fund is added
+    loadFunds();
+  };
+
+  const handleFundRemoved = (code: string) => {
+    // Always reload funds, regardless of whether it was a user fund or preset fund
+    loadFunds();
+  };
+
+  const handleDeleteFund = (id: string) => {
+    // Find fund by id and remove directly from both localStorage and display
+    const fund = funds.find(f => f.id === id);
+    if (fund) {
+      // Show confirmation dialog
+      if (window.confirm(`确定要删除基金 "${fund.name}" (${fund.code}) 吗？`)) {
+        // Remove from localStorage
+        removeUserFund(fund.code);
+        
+        // Update display immediately by filtering out the deleted fund
+        setFunds(prev => prev.filter(f => f.id !== id));
+      }
+    }
+  };
+
+  const loadFunds = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchQDIIFunds();
+      setFunds(data);
+    } catch (error) {
+      console.error("Failed to fetch funds", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -47,10 +89,16 @@ const App: React.FC = () => {
         ) : (
           <FundList 
             funds={funds} 
-            onToggle={handleToggle} 
+            onToggle={handleToggle}
+            onDelete={handleDeleteFund}
           />
         )}
         
+        <FundManager 
+          onFundAdded={handleFundAdded}
+          onFundRemoved={handleFundRemoved}
+          allFunds={funds}
+        />
       </div>
     </div>
   );

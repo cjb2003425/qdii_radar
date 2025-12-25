@@ -1,14 +1,15 @@
 import React from 'react';
-import { FundData } from '../types';
+import { FundData } from '../types/fund';
 import FundRow from './FundRow';
 import { Icons } from './Icon';
 
 interface Props {
   funds: FundData[];
   onToggle: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
-const FundList: React.FC<Props> = ({ funds, onToggle }) => {
+const FundList: React.FC<Props> = ({ funds, onToggle, onDelete }) => {
   return (
     <div className="flex-1 overflow-y-auto pb-4 bg-white">
       {/* Header Row */}
@@ -30,7 +31,7 @@ const FundList: React.FC<Props> = ({ funds, onToggle }) => {
       {/* Rows */}
       <div className="flex flex-col">
         {funds.map((fund) => (
-          <FundRow key={fund.id} fund={fund} onToggle={onToggle} />
+          <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} />
         ))}
       </div>
     </div>
