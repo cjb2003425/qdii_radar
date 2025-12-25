@@ -42,22 +42,37 @@ app.add_middleware(
 def format_limit_text(status: str, limit: float) -> str:
     if not status:
         return "—"
-    
-    # 如果有具体的限额数值，优先显示限额（即使状态包含"暂停"）
-    if 0 < limit < 1000000000000:
-        if limit >= 100000000:
-            return f"限{round(limit / 100000000, 2)}亿"
-        if limit >= 10000:
-            return f"限{round(limit / 10000)}万"
-        return f"限{limit}"
-    
-    # 没有具体限额时，根据状态显示
+
+    # 如果状态为暂停，直接显示"暂停"，不显示限额
     if "暂停" in status:
         return "暂停"
+
+    # 如果状态为限制或限大额，检查是否有具体限额
     if "限制" in status or "限大额" in status:
+        if 0 < limit < 1000000000000:
+            if limit >= 100000000:
+                return f"限{round(limit / 100000000, 2)}亿"
+            if limit >= 10000:
+                return f"限{round(limit / 10000)}万"
+            # 对于小于1万的限额，如果是整数则不显示小数点
+            if limit == int(limit):
+                return f"限{int(limit)}"
+            return f"限{limit}"
         return "暂停"  # 有状态但无限额数值，显示暂停
+
+    # 如果状态为开放，检查是否有具体限额（可能限大额但状态显示开放）
     if "开放" in status:
+        if 0 < limit < 1000000000000:
+            if limit >= 100000000:
+                return f"限{round(limit / 100000000, 2)}亿"
+            if limit >= 10000:
+                return f"限{round(limit / 10000)}万"
+            # 对于小于1万的限额，如果是整数则不显示小数点
+            if limit == int(limit):
+                return f"限{int(limit)}"
+            return f"限{limit}"
         return "不限"
+
     return status
 
 
@@ -107,6 +122,10 @@ def parse_fund_limit_from_html(html_content: str) -> Dict[str, str]:
                     limits["status"] = "暂停"
                     limits["limit"] = 0
             elif "开放" in status:
+                limits["status"] = "开放"
+                limits["limit"] = 0
+            elif status in ("---", "——", "—"):
+                # 如果状态显示为破折号，表示暂无数据，使用默认"开放"状态
                 limits["status"] = "开放"
                 limits["limit"] = 0
             else:
