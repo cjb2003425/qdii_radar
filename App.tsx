@@ -12,15 +12,28 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState<string>('all');
 
+  // localStorage key for monitoring preferences
+  const MONITORING_STORAGE_KEY = 'qdii_fund_monitoring';
+
   useEffect(() => {
     const loadFunds = async () => {
       setLoading(true);
       try {
         // 初始化预设基金（仅第一次）
         initializeFunds();
-        
+
         const data = await fetchQDIIFunds();
-        setFunds(data);
+
+        // Load monitoring preferences from localStorage
+        const monitoringPrefs = loadMonitoringPreferences();
+
+        // Merge monitoring preferences with fund data
+        const fundsWithMonitoring = data.map(fund => ({
+          ...fund,
+          monitoringEnabled: monitoringPrefs[fund.id] || false
+        }));
+
+        setFunds(fundsWithMonitoring);
       } catch (error) {
         console.error("Failed to fetch funds", error);
       } finally {
@@ -31,10 +44,51 @@ const App: React.FC = () => {
     loadFunds();
   }, []);
 
+  const loadMonitoringPreferences = (): Record<string, boolean> => {
+    try {
+      const stored = localStorage.getItem(MONITORING_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const saveMonitoringPreferences = (prefs: Record<string, boolean>) => {
+    try {
+      localStorage.setItem(MONITORING_STORAGE_KEY, JSON.stringify(prefs));
+    } catch (error) {
+      console.error("Failed to save monitoring preferences", error);
+    }
+  };
+
   const handleToggle = (id: string) => {
     setFunds(prev => prev.map(f =>
       f.id === id ? { ...f, isWatchlisted: !f.isWatchlisted } : f
     ));
+  };
+
+  const handleToggleMonitoring = async (id: string, enabled: boolean) => {
+    // Update the fund's monitoring state
+    setFunds(prev => prev.map(f =>
+      f.id === id ? { ...f, monitoringEnabled: enabled } : f
+    ));
+
+    // Save to localStorage
+    const prefs = loadMonitoringPreferences();
+    prefs[id] = enabled;
+    saveMonitoringPreferences(prefs);
+
+    // Sync to backend
+    try {
+      const monitoredFunds = Object.keys(prefs).filter(code => prefs[code]);
+      await fetch('http://127.0.0.1:8000/api/notifications/monitored-funds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ funds: monitoredFunds })
+      });
+    } catch (error) {
+      console.error("Failed to sync monitoring preferences to backend:", error);
+    }
   };
 
   // Calculate page counts
@@ -115,6 +169,7 @@ const App: React.FC = () => {
               currentPage={currentPage}
               onToggle={handleToggle}
               onDelete={handleDeleteFund}
+              onToggleMonitoring={handleToggleMonitoring}
             />
           </>
         )}

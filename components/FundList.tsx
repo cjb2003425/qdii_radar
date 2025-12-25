@@ -8,9 +8,10 @@ interface Props {
   currentPage: string;
   onToggle: (id: string) => void;
   onDelete?: (id: string) => void;
+  onToggleMonitoring?: (id: string, enabled: boolean) => void;
 }
 
-const FundList: React.FC<Props> = ({ funds, currentPage, onToggle, onDelete }) => {
+const FundList: React.FC<Props> = ({ funds, currentPage, onToggle, onDelete, onToggleMonitoring }) => {
   // Separate LOF funds (with real-time valuation) from regular funds
   const lofFunds = funds.filter(f => f.valuation > 0);
   const regularFunds = funds.filter(f => f.valuation === 0);
@@ -22,20 +23,23 @@ const FundList: React.FC<Props> = ({ funds, currentPage, onToggle, onDelete }) =
     <div className="flex-1 overflow-y-auto pb-4 bg-white">
       {/* Header Row */}
       <div className="flex items-center px-2 py-2 bg-gray-50 text-gray-500 text-xs border-b border-gray-200 sticky top-0 z-10">
-        <div className="w-[24%] sm:w-[20%] flex items-center gap-0.5">
+        <div className="w-[20%] sm:w-[18%] flex items-center gap-0.5">
           基金名称 <Icons.ArrowDown className="w-3 h-3" />
         </div>
-        <div className="w-[19%] sm:w-[20%] flex items-center justify-center gap-0.5 text-center leading-tight">
+        <div className="w-[17%] sm:w-[17%] flex items-center justify-center gap-0.5 text-center leading-tight">
           估值 <Icons.ArrowDown className="w-3 h-3 hidden sm:block" />
         </div>
-        <div className="w-[19%] sm:w-[20%] flex items-center justify-center text-center leading-tight">
+        <div className="w-[17%] sm:w-[17%] flex items-center justify-center text-center leading-tight">
           净值
         </div>
-        <div className="w-[19%] sm:w-[20%] flex items-center justify-center text-center leading-tight">
+        <div className="w-[17%] sm:w-[17%] flex items-center justify-center text-center leading-tight">
           溢价率
         </div>
-        <div className="w-[19%] sm:w-[20%] flex items-center justify-center text-center">
+        <div className="w-[17%] sm:w-[17%] flex items-center justify-center text-center">
           限额
+        </div>
+        <div className="w-[15%] sm:w-[14%] flex items-center justify-center text-center">
+          监控
         </div>
       </div>
 
@@ -46,7 +50,7 @@ const FundList: React.FC<Props> = ({ funds, currentPage, onToggle, onDelete }) =
           {lofFunds.length > 0 && (
             <div className="flex flex-col">
               {lofFunds.map((fund) => (
-                <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} />
+                <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} onToggleMonitoring={onToggleMonitoring} />
               ))}
             </div>
           )}
@@ -54,7 +58,7 @@ const FundList: React.FC<Props> = ({ funds, currentPage, onToggle, onDelete }) =
           {/* Regular Funds Section */}
           <div className="flex flex-col">
             {regularFunds.map((fund) => (
-              <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} />
+              <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} onToggleMonitoring={onToggleMonitoring} />
             ))}
           </div>
         </>
@@ -74,7 +78,7 @@ const FundList: React.FC<Props> = ({ funds, currentPage, onToggle, onDelete }) =
           {/* LOF Funds */}
           <div className="flex flex-col">
             {displayFunds.map((fund) => (
-              <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} />
+              <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} onToggleMonitoring={onToggleMonitoring} />
             ))}
           </div>
         </>

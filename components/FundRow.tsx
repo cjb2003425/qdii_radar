@@ -6,15 +6,16 @@ interface Props {
   fund: FundData;
   onToggle: (id: string) => void;
   onDelete?: (id: string) => void;
+  onToggleMonitoring?: (id: string, enabled: boolean) => void;
 }
 
-const FundRow: React.FC<Props> = ({ fund, onToggle, onDelete }) => {
+const FundRow: React.FC<Props> = ({ fund, onToggle, onDelete, onToggleMonitoring }) => {
   const isLimitRestricted = fund.limitText && (fund.limitText.includes('暂停') || fund.limitText.includes('限'));
 
   return (
     <div className="flex items-center py-3 px-2 bg-white border-b border-gray-100 text-sm hover:bg-gray-50 transition-colors">
       {/* Column 1: Name & Code */}
-      <div className="w-[24%] sm:w-[20%] flex flex-col justify-center overflow-hidden">
+      <div className="w-[20%] sm:w-[18%] flex flex-col justify-center overflow-hidden">
         <div className="flex items-center gap-1">
           <span className="text-[#2c68a8] font-medium text-[15px] leading-tight truncate" title={fund.name}>{fund.name}</span>
           {onDelete && (
@@ -31,7 +32,7 @@ const FundRow: React.FC<Props> = ({ fund, onToggle, onDelete }) => {
       </div>
 
       {/* Column 2: Valuation */}
-      <div className="w-[19%] sm:w-[20%] flex flex-col items-center justify-center text-center">
+      <div className="w-[17%] sm:w-[17%] flex flex-col items-center justify-center text-center">
         {fund.valuation > 0 ? (
           <>
             <span className="text-gray-900 text-[15px] font-medium leading-tight">{fund.valuation.toFixed(4)}</span>
@@ -45,7 +46,7 @@ const FundRow: React.FC<Props> = ({ fund, onToggle, onDelete }) => {
       </div>
 
       {/* Column 3: Net Asset Value */}
-      <div className="w-[19%] sm:w-[20%] flex flex-col items-center justify-center text-center">
+      <div className="w-[17%] sm:w-[17%] flex flex-col items-center justify-center text-center">
         {fund.marketPrice > 0 ? (
           <>
             <span className="text-gray-900 text-[15px] font-medium leading-tight">{fund.marketPrice.toFixed(4)}</span>
@@ -59,7 +60,7 @@ const FundRow: React.FC<Props> = ({ fund, onToggle, onDelete }) => {
       </div>
 
       {/* Column 4: Premium Rate */}
-      <div className="w-[19%] sm:w-[20%] flex flex-col items-center justify-center text-center">
+      <div className="w-[17%] sm:w-[17%] flex flex-col items-center justify-center text-center">
         {fund.valuation > 0 ? (
           <span className={`${getRateColorClass(fund.premiumRate)} text-[15px] font-medium leading-tight`}>
             {formatRate(fund.premiumRate, true)}
@@ -70,7 +71,7 @@ const FundRow: React.FC<Props> = ({ fund, onToggle, onDelete }) => {
       </div>
 
       {/* Column 5: Purchase Limit */}
-      <div className="w-[19%] sm:w-[20%] flex items-center justify-center text-center">
+      <div className="w-[17%] sm:w-[17%] flex items-center justify-center text-center">
         {fund.limitText ? (
           <span className={`text-xs px-1.5 py-0.5 rounded ${
             fund.limitText.includes('暂停')
@@ -83,6 +84,21 @@ const FundRow: React.FC<Props> = ({ fund, onToggle, onDelete }) => {
           </span>
         ) : (
           <span className="text-gray-400 text-xs">-</span>
+        )}
+      </div>
+
+      {/* Column 6: Monitoring Toggle Switch */}
+      <div className="w-[15%] sm:w-[14%] flex items-center justify-center">
+        {onToggleMonitoring && (
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              className="sr-only peer"
+              checked={fund.monitoringEnabled || false}
+              onChange={(e) => onToggleMonitoring(fund.id, e.target.checked)}
+            />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+          </label>
         )}
       </div>
     </div>

@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 import httpx
 import asyncio
 import re
@@ -13,10 +14,35 @@ import json
 import os
 from pathlib import Path
 
+# Import notification modules
+from notifications.models import init_db, get_db, NotificationConfig, EmailRecipient, NotificationHistory
+from notifications.monitor import monitor
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="QDII Fund Radar API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan management."""
+    # Startup: Initialize database and monitor
+    logger.info("Starting up QDII Fund Radar API...")
+    init_db()  # Initialize notification database
+    await monitor.initialize()
+
+    # Auto-start monitoring if enabled
+    if monitor.is_enabled():
+        logger.info("Auto-starting notification monitor...")
+        asyncio.create_task(monitor.start_monitoring())
+
+    yield
+
+    # Shutdown: Stop monitoring
+    logger.info("Shutting down QDII Fund Radar API...")
+    await monitor.stop_monitoring()
+
+
+app = FastAPI(title="QDII Fund Radar API", lifespan=lifespan)
 
 # 全局缓存AKShare数据
 akshare_cache = None
@@ -653,6 +679,339 @@ async def get_qdii_funds(codes: str = None):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+# ============================================================================
+# Notification API Endpoints
+# ============================================================================
+
+from pydantic import BaseModel
+
+
+class NotificationConfigModel(BaseModel):
+    smtp_enabled: bool = False
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    premium_threshold_high: float = 5.0
+    premium_threshold_low: float = -5.0
+    check_interval_seconds: int = 300
+    debounce_minutes: int = 60
+
+
+@app.get("/api/notifications/config")
+async def get_notification_config():
+    """Get notification configuration (excluding password)."""
+    session = get_db()
+    try:
+        configs = session.query(NotificationConfig).all()
+        config_dict = {c.config_key: c.config_value for c in configs}
+
+        # Don't return password
+        if 'smtp_password' in config_dict:
+            config_dict['smtp_password'] = '******' if config_dict['smtp_password'] else ''
+
+        # Convert boolean and numeric fields
+        result = {
+            'smtp_enabled': config_dict.get('smtp_enabled', 'false').lower() == 'true',
+            'smtp_host': config_dict.get('smtp_host', 'smtp.gmail.com'),
+            'smtp_port': int(config_dict.get('smtp_port', '587')),
+            'smtp_username': config_dict.get('smtp_username', ''),
+            'smtp_password': config_dict.get('smtp_password', ''),
+            'smtp_from_email': config_dict.get('smtp_from_email', ''),
+            'premium_threshold_high': float(config_dict.get('premium_threshold_high', '5.0')),
+            'premium_threshold_low': float(config_dict.get('premium_threshold_low', '-5.0')),
+            'check_interval_seconds': int(config_dict.get('check_interval_seconds', '300')),
+            'debounce_minutes': int(config_dict.get('debounce_minutes', '60')),
+        }
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to get notification config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
+
+
+@app.post("/api/notifications/config")
+async def update_notification_config(config: NotificationConfigModel):
+    """Update notification configuration."""
+    session = get_db()
+    try:
+        updates = {
+            'smtp_enabled': str(config.smtp_enabled).lower(),
+            'smtp_host': config.smtp_host,
+            'smtp_port': str(config.smtp_port),
+            'smtp_username': config.smtp_username,
+            'smtp_from_email': config.smtp_from_email,
+            'premium_threshold_high': str(config.premium_threshold_high),
+            'premium_threshold_low': str(config.premium_threshold_low),
+            'check_interval_seconds': str(config.check_interval_seconds),
+            'debounce_minutes': str(config.debounce_minutes),
+        }
+
+        # Only update password if provided (not empty or masked)
+        if config.smtp_password and config.smtp_password != '******':
+            updates['smtp_password'] = config.smtp_password
+
+        for key, value in updates.items():
+            existing = session.query(NotificationConfig).filter_by(config_key=key).first()
+            if existing:
+                existing.config_value = value
+            else:
+                new_config = NotificationConfig(config_key=key, config_value=value)
+                session.add(new_config)
+
+        session.commit()
+
+        # Reload monitor configuration
+        monitor._load_config()
+
+        logger.info("Notification configuration updated")
+        return {"status": "success"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to update notification config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
+
+
+class TestEmailModel(BaseModel):
+    recipient: str
+
+
+@app.post("/api/notifications/test-email")
+async def send_test_email(data: TestEmailModel):
+    """Send a test email."""
+    from notifications.email_service import EmailService
+
+    email_service = EmailService()
+    success = await email_service.send_test_email(data.recipient)
+
+    if success:
+        return {"status": "success", "message": "Test email sent"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to send test email")
+
+
+class VerifyConfigModel(BaseModel):
+    pass
+
+
+@app.post("/api/notifications/verify-config")
+async def verify_smtp_config():
+    """Verify SMTP configuration."""
+    from notifications.email_service import EmailService
+
+    email_service = EmailService()
+    result = await email_service.verify_smtp_config()
+
+    if result.get('success'):
+        return {"status": "success", "message": result.get('message')}
+    else:
+        raise HTTPException(status_code=400, detail=result.get('error'))
+
+
+@app.get("/api/notifications/recipients")
+async def get_recipients():
+    """Get list of email recipients."""
+    session = get_db()
+    try:
+        recipients = session.query(EmailRecipient).all()
+        return [
+            {
+                'id': r.id,
+                'email': r.email,
+                'is_active': r.is_active,
+                'added_at': r.added_at.isoformat()
+            }
+            for r in recipients
+        ]
+    except Exception as e:
+        logger.error(f"Failed to get recipients: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
+
+
+class AddRecipientModel(BaseModel):
+    email: str
+
+
+@app.post("/api/notifications/recipients")
+async def add_recipient(data: AddRecipientModel):
+    """Add a new email recipient."""
+    session = get_db()
+    try:
+        # Check if already exists
+        existing = session.query(EmailRecipient).filter_by(email=data.email).first()
+        if existing:
+            # Reactivate if exists but inactive
+            existing.is_active = True
+        else:
+            new_recipient = EmailRecipient(email=data.email, is_active=True)
+            session.add(new_recipient)
+
+        session.commit()
+        logger.info(f"Added recipient: {data.email}")
+        return {"status": "success"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to add recipient: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
+
+
+@app.delete("/api/notifications/recipients/{email}")
+async def remove_recipient(email: str):
+    """Remove an email recipient."""
+    session = get_db()
+    try:
+        recipient = session.query(EmailRecipient).filter_by(email=email).first()
+        if not recipient:
+            raise HTTPException(status_code=404, detail="Recipient not found")
+
+        session.delete(recipient)
+        session.commit()
+        logger.info(f"Removed recipient: {email}")
+        return {"status": "success"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to remove recipient: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
+
+
+@app.post("/api/notifications/monitoring/start")
+async def start_monitoring():
+    """Start the notification monitor."""
+    success = await monitor.start_monitoring()
+    if success:
+        return {"status": "success", "message": "Monitoring started"}
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to start monitoring. Check if email notifications are enabled."
+        )
+
+
+@app.post("/api/notifications/monitoring/stop")
+async def stop_monitoring():
+    """Stop the notification monitor."""
+    await monitor.stop_monitoring()
+    return {"status": "success", "message": "Monitoring stopped"}
+
+
+@app.get("/api/notifications/monitoring/status")
+async def get_monitoring_status():
+    """Get monitoring status."""
+    return monitor.get_status()
+
+
+@app.get("/api/notifications/history")
+async def get_notification_history(limit: int = 20, offset: int = 0):
+    """Get notification history."""
+    from notifications.state_tracker import StateTracker
+
+    tracker = StateTracker()
+    history = await tracker.get_notification_history(limit=limit, offset=offset)
+    return history
+
+
+@app.get("/api/notifications/history/stats")
+async def get_notification_stats():
+    """Get notification statistics."""
+    from notifications.state_tracker import StateTracker
+
+    tracker = StateTracker()
+    stats = await tracker.get_notification_stats()
+    return stats
+
+
+# ============================================================================
+# Monitored Funds Management
+# ============================================================================
+
+class MonitoredFundsModel(BaseModel):
+    """Model for monitored funds list."""
+    funds: List[str]  # List of fund codes
+
+
+@app.get("/api/notifications/monitored-funds")
+async def get_monitored_funds():
+    """Get list of monitored fund codes."""
+    from notifications.models import get_db, MonitoredFund
+
+    session = get_db()
+    try:
+        # Create table if not exists
+        from sqlalchemy import text
+        session.execute(text("""
+            CREATE TABLE IF NOT EXISTS monitored_funds (
+                fund_code TEXT PRIMARY KEY,
+                enabled BOOLEAN NOT NULL DEFAULT 1,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        session.commit()
+
+        monitored = session.query(MonitoredFund).filter_by(enabled=True).all()
+        return [f.fund_code for f in monitored]
+
+    except Exception as e:
+        logger.error(f"Failed to get monitored funds: {e}")
+        return []
+    finally:
+        session.close()
+
+
+@app.post("/api/notifications/monitored-funds")
+async def update_monitored_funds(data: MonitoredFundsModel):
+    """Update the list of monitored funds."""
+    from notifications.models import get_db, MonitoredFund
+    from sqlalchemy import text
+
+    session = get_db()
+    try:
+        # Create table if not exists
+        session.execute(text("""
+            CREATE TABLE IF NOT EXISTS monitored_funds (
+                fund_code TEXT PRIMARY KEY,
+                enabled BOOLEAN NOT NULL DEFAULT 1,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        session.commit()
+
+        # Clear existing monitored funds
+        session.execute(text("DELETE FROM monitored_funds"))
+
+        # Insert new monitored funds
+        for fund_code in data.funds:
+            monitored = MonitoredFund(fund_code=fund_code, enabled=True)
+            session.add(monitored)
+
+        session.commit()
+        logger.info(f"Updated monitored funds: {len(data.funds)} funds")
+        return {"status": "success", "count": len(data.funds)}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to update monitored funds: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":
