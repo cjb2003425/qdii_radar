@@ -5,11 +5,19 @@ import { Icons } from './Icon';
 
 interface Props {
   funds: FundData[];
+  currentPage: string;
   onToggle: (id: string) => void;
   onDelete?: (id: string) => void;
 }
 
-const FundList: React.FC<Props> = ({ funds, onToggle, onDelete }) => {
+const FundList: React.FC<Props> = ({ funds, currentPage, onToggle, onDelete }) => {
+  // Separate LOF funds (with real-time valuation) from regular funds
+  const lofFunds = funds.filter(f => f.valuation > 0);
+  const regularFunds = funds.filter(f => f.valuation === 0);
+
+  // Determine which funds to display based on current page
+  const displayFunds = currentPage === 'lof' ? lofFunds : funds;
+
   return (
     <div className="flex-1 overflow-y-auto pb-4 bg-white">
       {/* Header Row */}
@@ -28,12 +36,52 @@ const FundList: React.FC<Props> = ({ funds, onToggle, onDelete }) => {
         </div>
       </div>
 
-      {/* Rows */}
-      <div className="flex flex-col">
-        {funds.map((fund) => (
-          <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} />
-        ))}
-      </div>
+      {/* All Funds Page */}
+      {currentPage === 'all' && (
+        <>
+          {/* LOF Funds Section */}
+          {lofFunds.length > 0 && (
+            <div className="border-b border-gray-200">
+              <div className="px-2 py-1.5 bg-blue-50 text-blue-700 text-xs font-semibold flex items-center gap-1">
+                <span className="inline-block w-1.5 h-1.5 bg-blue-600 rounded-full"></span>
+                LOF基金 (实时行情)
+              </div>
+              <div className="flex flex-col">
+                {lofFunds.map((fund) => (
+                  <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Regular Funds Section */}
+          <div className="flex flex-col">
+            {regularFunds.map((fund) => (
+              <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* LOF Funds Only Page */}
+      {currentPage === 'lof' && (
+        <>
+          {/* Page indicator */}
+          <div className="px-2 py-1.5 bg-blue-100 text-blue-800 text-xs font-semibold flex items-center justify-between">
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-1.5 h-1.5 bg-blue-600 rounded-full"></span>
+              LOF基金实时行情 ({lofFunds.length}只)
+            </span>
+          </div>
+
+          {/* LOF Funds */}
+          <div className="flex flex-col">
+            {displayFunds.map((fund) => (
+              <FundRow key={fund.id} fund={fund} onToggle={onToggle} onDelete={onDelete} />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 };

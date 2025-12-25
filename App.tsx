@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import FundList from './components/FundList';
 import FundManager from './components/FundManager';
+import HeadlineStats from './components/HeadlineStats';
+import NavBar from './components/NavBar';
 import { FundData } from './types/fund';
 import { fetchQDIIFunds } from './services/fundService';
 import { initializeFunds, removeUserFund } from './services/userFundService';
@@ -8,6 +10,7 @@ import { initializeFunds, removeUserFund } from './services/userFundService';
 const App: React.FC = () => {
   const [funds, setFunds] = useState<FundData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState<string>('all');
 
   useEffect(() => {
     const loadFunds = async () => {
@@ -29,9 +32,22 @@ const App: React.FC = () => {
   }, []);
 
   const handleToggle = (id: string) => {
-    setFunds(prev => prev.map(f => 
+    setFunds(prev => prev.map(f =>
       f.id === id ? { ...f, isWatchlisted: !f.isWatchlisted } : f
     ));
+  };
+
+  // Calculate page counts
+  const lofCount = funds.filter(f => f.valuation > 0).length;
+  const allCount = funds.length;
+
+  const pages = [
+    { id: 'all', label: '全部基金', count: allCount },
+    { id: 'lof', label: 'LOF基金', count: lofCount },
+  ];
+
+  const handlePageChange = (pageId: string) => {
+    setCurrentPage(pageId);
   };
 
   const handleFundAdded = (code: string, name: string) => {
@@ -87,11 +103,20 @@ const App: React.FC = () => {
              <span className="text-sm">正在获取最新QDII数据...</span>
           </div>
         ) : (
-          <FundList 
-            funds={funds} 
-            onToggle={handleToggle}
-            onDelete={handleDeleteFund}
-          />
+          <>
+            <NavBar
+              currentPage={currentPage}
+              pages={pages}
+              onPageChange={handlePageChange}
+            />
+            <HeadlineStats funds={funds} />
+            <FundList
+              funds={funds}
+              currentPage={currentPage}
+              onToggle={handleToggle}
+              onDelete={handleDeleteFund}
+            />
+          </>
         )}
         
         <FundManager 
