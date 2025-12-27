@@ -38,3 +38,4 @@ data/notifications.db
 
 # Config files with sensitive data
 config/smtp.json
+config/recipients.json
