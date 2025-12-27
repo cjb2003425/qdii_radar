@@ -22,3 +22,19 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/notifications.db
+
+# Config files with sensitive data
+config/smtp.json

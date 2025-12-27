@@ -1,0 +1,44 @@
+[
+  {
+    "fund_code": "161130",
+    "trigger_type": "premium_high",
+    "threshold_value": 5.0,
+    "enabled": true
+  },
+  {
+    "fund_code": "160216",
+    "trigger_type": "premium_high",
+    "threshold_value": 5.0,
+    "enabled": true
+  },
+  {
+    "fund_code": "161226",
+    "trigger_type": "limit_change",
+    "threshold_value": 100.0,
+    "enabled": true
+  },
+  {
+    "fund_code": "015299",
+    "trigger_type": "limit_change",
+    "threshold_value": 100.0,
+    "enabled": true
+  },
+  {
+    "fund_code": "164701",
+    "trigger_type": "premium_high",
+    "threshold_value": 6.0,
+    "enabled": true
+  },
+  {
+    "fund_code": "161226",
+    "trigger_type": "premium_high",
+    "threshold_value": 7.0,
+    "enabled": true
+  },
+  {
+    "fund_code": "161226",
+    "trigger_type": "premium_low",
+    "threshold_value": -3.0,
+    "enabled": true
+  }
+]
