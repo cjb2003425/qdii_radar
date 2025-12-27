@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 from sqlalchemy import desc
-from .models import get_db, FundState, NotificationHistory, NotificationConfig, EmailRecipient
+from .models import get_db, FundState, NotificationHistory, NotificationConfig, EmailRecipient, FundTrigger
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,55 @@ class StateTracker:
         high = float(self.config.get('premium_threshold_high', '5.0'))
         low = float(self.config.get('premium_threshold_low', '-5.0'))
         return high, low
+
+    def get_fund_trigger_thresholds(self, fund_code: str) -> Optional[Tuple[float, float]]:
+        """
+        Get custom premium rate thresholds for a specific fund.
+
+        Args:
+            fund_code: Fund code
+
+        Returns:
+            Tuple of (high_threshold, low_threshold) if custom triggers exist, None otherwise
+        """
+        session = get_db()
+        try:
+            triggers = session.query(FundTrigger).filter(
+                FundTrigger.fund_code == fund_code,
+                FundTrigger.trigger_type.in_(['premium_high', 'premium_low']),
+                FundTrigger.enabled == True
+            ).all()
+
+            if not triggers:
+                return None
+
+            # Extract thresholds
+            high_threshold = None
+            low_threshold = None
+
+            for trigger in triggers:
+                if trigger.trigger_type == 'premium_high' and trigger.threshold_value is not None:
+                    high_threshold = trigger.threshold_value
+                elif trigger.trigger_type == 'premium_low' and trigger.threshold_value is not None:
+                    low_threshold = trigger.threshold_value
+
+            # If no valid thresholds found, return None
+            if high_threshold is None and low_threshold is None:
+                return None
+
+            # Use defaults for missing thresholds
+            if high_threshold is None:
+                high_threshold = float(self.config.get('premium_threshold_high', '5.0'))
+            if low_threshold is None:
+                low_threshold = float(self.config.get('premium_threshold_low', '-5.0'))
+
+            return (high_threshold, low_threshold)
+
+        except Exception as e:
+            logger.error(f"Failed to get fund triggers for {fund_code}: {e}")
+            return None
+        finally:
+            session.close()
 
     def get_debounce_minutes(self) -> int:
         """Get debounce period in minutes."""
@@ -131,7 +180,14 @@ class StateTracker:
         Returns:
             Dict with alert details if breach detected, None otherwise
         """
-        high_threshold, low_threshold = self.get_thresholds()
+        # Check for custom fund triggers first, fall back to global thresholds
+        custom_thresholds = self.get_fund_trigger_thresholds(fund_code)
+        if custom_thresholds:
+            high_threshold, low_threshold = custom_thresholds
+            logger.debug(f"Using custom thresholds for {fund_code}: high={high_threshold}, low={low_threshold}")
+        else:
+            high_threshold, low_threshold = self.get_thresholds()
+            logger.debug(f"Using global thresholds for {fund_code}: high={high_threshold}, low={low_threshold}")
 
         # Check if current rate exceeds thresholds
         if current_rate > high_threshold:
@@ -215,6 +271,9 @@ class StateTracker:
         Returns:
             True if should debounce (skip), False otherwise
         """
+        # Reload config to get latest debounce setting
+        self._load_config()
+
         debounce_minutes = self.get_debounce_minutes()
         cutoff_time = datetime.utcnow() - timedelta(minutes=debounce_minutes)
 

@@ -39,6 +39,14 @@ class NotificationMonitor:
 
     def get_check_interval(self) -> int:
         """Get check interval in seconds."""
+        import os
+
+        # Use 3 minutes in development mode for testing
+        environment = os.getenv('ENVIRONMENT', 'development').lower()
+        if environment == 'development':
+            return 180  # 3 minutes
+
+        # Use configured interval in production/release mode
         self._load_config()
         return int(self.config.get('check_interval_seconds', '300'))
 
@@ -81,12 +89,43 @@ class NotificationMonitor:
         self.task = None
         logger.info("Notification monitoring stopped")
 
+    def _should_enforce_trading_days(self) -> bool:
+        """Check if trading day enforcement should be applied (release mode)."""
+        import os
+        # Check if running in release/production mode
+        # You can set an environment variable or check other indicators
+        return os.getenv('ENVIRONMENT', 'development').lower() in ['production', 'release']
+
+    def _is_trading_day(self) -> bool:
+        """Check if today is a trading day."""
+        try:
+            from server import is_trading_day
+            from datetime import datetime
+
+            today = datetime.now().strftime('%Y-%m-%d')
+            return is_trading_day(today)
+        except Exception as e:
+            logger.error(f"Failed to check trading day: {e}")
+            return True  # Assume trading day on error
+
     async def _monitoring_loop(self):
         """Main monitoring loop."""
         logger.info("Monitoring loop started")
 
         while self.running:
             try:
+                # Check if we should skip on non-trading days (release mode)
+                if self._should_enforce_trading_days():
+                    if not self._is_trading_day():
+                        logger.info("Today is not a trading day, skipping monitoring check")
+                        # Sleep until next trading day check
+                        interval = self.get_check_interval()
+                        for _ in range(interval):
+                            if not self.running:
+                                break
+                            await asyncio.sleep(1)
+                        continue
+
                 await self.check_all_funds()
                 self.last_check_time = datetime.utcnow()
 
@@ -156,6 +195,7 @@ class NotificationMonitor:
                 premium_rate = fund.get('premiumRate', 0)
                 market_price = fund.get('marketPrice', 0)
                 nav = fund.get('valuation', 0)  # Note: NAV is stored in valuation field
+                limit_text = fund.get('limitText', '')
 
                 # Skip if not LOF fund (no real-time data)
                 if market_price == 0:
@@ -178,6 +218,7 @@ class NotificationMonitor:
                         new_rate=float(alert['new_value'].replace('%', '')),
                         market_price=alert['market_price'],
                         nav=alert['nav'],
+                        limit_text=limit_text,
                         recipients=recipients
                     )
 

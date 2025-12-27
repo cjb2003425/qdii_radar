@@ -10,9 +10,19 @@ import logging
 from html import unescape
 from data.funds_loader import QDII_FUNDS, API_CONFIG
 import akshare as ak
+import pandas as pd
 import json
 import os
 from pathlib import Path
+
+# Trigger JSON file path
+TRIGGERS_FILE = Path(__file__).parent / "data" / "triggers.json"
+
+# SMTP config file path
+SMTP_CONFIG_FILE = Path(__file__).parent / "config" / "smtp.json"
+
+# Recipients config file path
+RECIPIENTS_FILE = Path(__file__).parent / "config" / "recipients.json"
 
 # Import notification modules
 from notifications.models import init_db, get_db, NotificationConfig, EmailRecipient, NotificationHistory
@@ -22,12 +32,135 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# Chinese stock trading date cache
+_trading_dates_cache = {}
+_cache_date = None
+
+
+def get_chinese_stock_dates(start_date: str = None, end_date: str = None) -> Dict:
+    """
+    Fetch Chinese stock market trading dates using AKShare.
+
+    Args:
+        start_date: Start date in YYYYMMDD format (default: 30 days ago)
+        end_date: End date in YYYYMMDD format (default: today)
+
+    Returns:
+        Dict with trading dates info
+    """
+    from datetime import datetime, timedelta
+
+    global _trading_dates_cache, _cache_date
+
+    today = datetime.now()
+    cache_key = f"{start_date}_{end_date}"
+
+    # Check if cache is valid (refresh daily)
+    if _cache_date == today.date() and cache_key in _trading_dates_cache:
+        return _trading_dates_cache[cache_key]
+
+    try:
+        # Default date range: past 30 days to 30 days in future
+        if not start_date:
+            start_date = (today - timedelta(days=30)).strftime('%Y%m%d')
+        if not end_date:
+            end_date = (today + timedelta(days=30)).strftime('%Y%m%d')
+
+        # Fetch trading calendar from AKShare
+        # ak.tool_trade_date_hist_sina() returns historical trading dates
+        df = ak.tool_trade_date_hist_sina()
+
+        # Filter by date range
+        df['trade_date'] = pd.to_datetime(df['trade_date'])
+        start_dt = datetime.strptime(start_date, '%Y%m%d')
+        end_dt = datetime.strptime(end_date, '%Y%m%d')
+
+        mask = (df['trade_date'] >= start_dt) & (df['trade_date'] <= end_dt)
+        filtered_df = df[mask]
+
+        # Convert to list of date strings
+        trading_dates = filtered_df['trade_date'].dt.strftime('%Y-%m-%d').tolist()
+
+        # Check if today is a trading day
+        today_str = today.strftime('%Y-%m-%d')
+        is_trading_day = today_str in trading_dates
+
+        # Get next trading day
+        future_dates = [d for d in trading_dates if d > today_str]
+        next_trading_day = future_dates[0] if future_dates else None
+
+        # Get previous trading day
+        past_dates = [d for d in trading_dates if d < today_str]
+        previous_trading_day = past_dates[-1] if past_dates else None
+
+        result = {
+            'trading_dates': trading_dates,
+            'is_trading_day': is_trading_day,
+            'next_trading_day': next_trading_day,
+            'previous_trading_day': previous_trading_day,
+            'total_trading_days': len(trading_dates),
+            'start_date': start_dt.strftime('%Y-%m-%d'),
+            'end_date': end_dt.strftime('%Y-%m-%d'),
+            'query_date': today_str
+        }
+
+        # Update cache
+        _trading_dates_cache[cache_key] = result
+        _cache_date = today.date()
+
+        logger.info(f"Fetched {len(trading_dates)} trading dates from {start_date} to {end_date}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to fetch trading dates: {e}")
+        return {
+            'trading_dates': [],
+            'is_trading_day': True,  # Assume trading day on error
+            'next_trading_day': None,
+            'previous_trading_day': None,
+            'total_trading_days': 0,
+            'start_date': start_date,
+            'end_date': end_date,
+            'error': str(e)
+        }
+
+
+def is_trading_day(date: str = None) -> bool:
+    """
+    Check if a specific date is a Chinese stock trading day.
+
+    Args:
+        date: Date string in YYYY-MM-DD format (default: today)
+
+    Returns:
+        True if it's a trading day, False otherwise
+    """
+    from datetime import datetime
+
+    if not date:
+        date = datetime.now().strftime('%Y-%m-%d')
+
+    try:
+        trading_info = get_chinese_stock_dates()
+        return date in trading_info['trading_dates']
+    except Exception as e:
+        logger.error(f"Failed to check trading day: {e}")
+        return True  # Assume trading day on error
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
     # Startup: Initialize database and monitor
     logger.info("Starting up QDII Fund Radar API...")
     init_db()  # Initialize notification database
+
+    # Load SMTP config from file
+    load_smtp_config_from_file()
+
+    # Load recipients from file
+    load_recipients_from_file()
+
     await monitor.initialize()
 
     # Auto-start monitoring if enabled
@@ -63,6 +196,144 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def save_triggers_to_json():
+    """Save all triggers from database to JSON file."""
+    from notifications.models import get_db, FundTrigger
+
+    try:
+        session = get_db()
+        triggers = session.query(FundTrigger).all()
+
+        # Convert to list of dicts
+        triggers_data = []
+        for t in triggers:
+            triggers_data.append({
+                'fund_code': t.fund_code,
+                'trigger_type': t.trigger_type,
+                'threshold_value': t.threshold_value,
+                'enabled': t.enabled
+            })
+
+        # Save to JSON file
+        with open(TRIGGERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(triggers_data, f, indent=2, ensure_ascii=False)
+
+        logger.info(f"Saved {len(triggers_data)} triggers to {TRIGGERS_FILE}")
+        session.close()
+    except Exception as e:
+        logger.error(f"Failed to save triggers to JSON: {e}")
+
+
+def load_smtp_config_from_file():
+    """Load SMTP configuration from file and update database."""
+    try:
+        if not SMTP_CONFIG_FILE.exists():
+            logger.warning(f"SMTP config file not found: {SMTP_CONFIG_FILE}")
+            return False
+
+        with open(SMTP_CONFIG_FILE, 'r', encoding='utf-8') as f:
+            smtp_config = json.load(f)
+
+        # Update database with file values
+        session = get_db()
+        try:
+            for key, value in smtp_config.items():
+                if key.startswith('_'):
+                    continue  # Skip comment fields
+
+                existing = session.query(NotificationConfig).filter_by(config_key=key).first()
+                if existing:
+                    existing.config_value = str(value)
+                else:
+                    config = NotificationConfig(config_key=key, config_value=str(value))
+                    session.add(config)
+
+            session.commit()
+            logger.info(f"Loaded SMTP config from {SMTP_CONFIG_FILE}")
+            return True
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to update SMTP config in database: {e}")
+            return False
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"Failed to load SMTP config file: {e}")
+        return False
+
+
+def load_recipients_from_file():
+    """Load email recipients from file and update database."""
+    try:
+        if not RECIPIENTS_FILE.exists():
+            logger.warning(f"Recipients config file not found: {RECIPIENTS_FILE}")
+            return False
+
+        with open(RECIPIENTS_FILE, 'r', encoding='utf-8') as f:
+            recipients_list = json.load(f)
+
+        # Get existing recipients
+        session = get_db()
+        try:
+            # Mark all existing as inactive first
+            session.query(EmailRecipient).update({'is_active': False})
+
+            # Update or add recipients from file
+            for recipient_data in recipients_list:
+                email = recipient_data.get('email')
+                active = recipient_data.get('active', True)
+
+                if not email:
+                    continue
+
+                existing = session.query(EmailRecipient).filter_by(email=email).first()
+                if existing:
+                    existing.is_active = active
+                else:
+                    new_recipient = EmailRecipient(email=email, is_active=active)
+                    session.add(new_recipient)
+
+            session.commit()
+            logger.info(f"Loaded {len(recipients_list)} recipients from {RECIPIENTS_FILE}")
+            return True
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to update recipients in database: {e}")
+            return False
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"Failed to load recipients file: {e}")
+        return False
+
+
+def save_recipients_to_file():
+    """Save all recipients from database to JSON file."""
+    try:
+        session = get_db()
+        recipients = session.query(EmailRecipient).all()
+
+        # Convert to list of dicts
+        recipients_list = []
+        for r in recipients:
+            recipients_list.append({
+                'email': r.email,
+                'active': r.is_active
+            })
+
+        # Save to JSON file
+        with open(RECIPIENTS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(recipients_list, f, indent=2, ensure_ascii=False)
+
+        logger.info(f"Saved {len(recipients_list)} recipients to {RECIPIENTS_FILE}")
+        session.close()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save recipients to file: {e}")
+        session.close()
+        return False
 
 
 def format_limit_text(status: str, limit: float) -> str:
@@ -682,6 +953,66 @@ async def health_check():
 
 
 # ============================================================================
+# Trading Dates API Endpoints
+# ============================================================================
+
+@app.get("/api/trading-dates")
+async def get_trading_dates(start_date: str = None, end_date: str = None):
+    """
+    Get Chinese stock market trading dates.
+
+    Query parameters:
+    - start_date: Start date in YYYYMMDD format (optional)
+    - end_date: End date in YYYYMMDD format (optional)
+
+    Returns trading calendar info including whether today is a trading day.
+    """
+    return get_chinese_stock_dates(start_date, end_date)
+
+
+@app.get("/api/trading-dates/today")
+async def check_today_trading():
+    """Check if today is a Chinese stock trading day."""
+    from datetime import datetime
+
+    today = datetime.now().strftime('%Y-%m-%d')
+    is_trading = is_trading_day(today)
+
+    trading_info = get_chinese_stock_dates()
+
+    return {
+        "date": today,
+        "is_trading_day": is_trading,
+        "next_trading_day": trading_info.get('next_trading_day'),
+        "previous_trading_day": trading_info.get('previous_trading_day')
+    }
+
+
+@app.get("/api/trading-dates/check/{date}")
+async def check_specific_date(date: str):
+    """
+    Check if a specific date is a trading day.
+
+    Path parameter:
+    - date: Date in YYYY-MM-DD format
+    """
+    # Validate date format
+    try:
+        datetime.strptime(date, '%Y-%m-%d')
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    is_trading = is_trading_day(date)
+    trading_info = get_chinese_stock_dates()
+
+    return {
+        "date": date,
+        "is_trading_day": is_trading,
+        "in_trading_calendar": date in trading_info.get('trading_dates', [])
+    }
+
+
+# ============================================================================
 # Notification API Endpoints
 # ============================================================================
 
@@ -858,6 +1189,7 @@ async def add_recipient(data: AddRecipientModel):
             session.add(new_recipient)
 
         session.commit()
+        save_recipients_to_file()  # Save to config file
         logger.info(f"Added recipient: {data.email}")
         return {"status": "success"}
 
@@ -880,6 +1212,7 @@ async def remove_recipient(email: str):
 
         session.delete(recipient)
         session.commit()
+        save_recipients_to_file()  # Save to config file
         logger.info(f"Removed recipient: {email}")
         return {"status": "success"}
 
@@ -1009,6 +1342,283 @@ async def update_monitored_funds(data: MonitoredFundsModel):
     except Exception as e:
         session.rollback()
         logger.error(f"Failed to update monitored funds: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
+
+
+@app.post("/api/notifications/test-triggers")
+async def test_triggers():
+    """Test triggers by manually checking current fund data against triggers and sending emails."""
+    from notifications.models import get_db, FundTrigger, MonitoredFund, EmailRecipient
+    from notifications.state_tracker import StateTracker
+    from notifications.email_service import EmailService
+
+    try:
+        # Fetch current fund data
+        funds = await get_qdii_funds()
+
+        # Get monitored funds
+        session = get_db()
+        monitored_funds = session.query(MonitoredFund).filter_by(enabled=True).all()
+        monitored_codes = {f.fund_code for f in monitored_funds}
+        session.close()
+
+        # Filter to monitored funds
+        monitored_funds_list = [f for f in funds if f.get('id') in monitored_codes]
+
+        # Get triggers for monitored funds
+        session = get_db()
+        triggers = session.query(FundTrigger).filter(
+            FundTrigger.fund_code.in_(monitored_codes),
+            FundTrigger.enabled == True
+        ).all()
+        session.close()
+
+        # Get active recipients
+        session = get_db()
+        recipients = session.query(EmailRecipient).filter_by(is_active=True).all()
+        recipient_emails = [r.email for r in recipients]
+        session.close()
+
+        tracker = StateTracker()
+        email_service = EmailService()
+        email_service._load_config()
+
+        results = []
+        emails_sent = 0
+
+        # Check each monitored fund
+        for fund in monitored_funds_list:
+            fund_code = fund.get('id')
+            fund_name = fund.get('name')
+            premium_rate = fund.get('premiumRate', 0)
+            market_price = fund.get('marketPrice', 0)
+            nav = fund.get('valuation', 0)
+            limit_text = fund.get('limitText', '')
+
+            # Get custom thresholds for this fund
+            fund_triggers = [t for t in triggers if t.fund_code == fund_code]
+
+            for trigger in fund_triggers:
+                if trigger.trigger_type in ['premium_high', 'premium_low']:
+                    threshold = trigger.threshold_value
+
+                    # Check if threshold is breached
+                    would_trigger = False
+                    if trigger.trigger_type == 'premium_high' and premium_rate > threshold:
+                        would_trigger = True
+                    elif trigger.trigger_type == 'premium_low' and premium_rate < threshold:
+                        would_trigger = True
+
+                    results.append({
+                        'fund_code': fund_code,
+                        'fund_name': fund_name,
+                        'trigger_type': trigger.trigger_type,
+                        'threshold': threshold,
+                        'current_value': premium_rate,
+                        'would_trigger': would_trigger,
+                        'market_price': market_price,
+                        'nav': nav
+                    })
+
+                    # Send email if triggered
+                    if would_trigger and recipient_emails:
+                        # Use old_rate = 0 for test emails
+                        success = await email_service.send_premium_alert(
+                            fund_code=fund_code,
+                            fund_name=fund_name,
+                            old_rate=0.0,
+                            new_rate=premium_rate,
+                            market_price=market_price,
+                            nav=nav,
+                            limit_text=limit_text,
+                            recipients=recipient_emails
+                        )
+                        if success:
+                            emails_sent += 1
+                            logger.info(f"Test trigger email sent for {fund_code} ({trigger.trigger_type})")
+
+        return {
+            'test_results': results,
+            'total_triggers_tested': len(results),
+            'would_fire': len([r for r in results if r['would_trigger']]),
+            'emails_sent': emails_sent
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to test triggers: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Fund Triggers Management (User-defined thresholds per fund)
+# ============================================================================
+
+class FundTriggerModel(BaseModel):
+    """Model for fund trigger configuration."""
+    fund_code: Optional[str] = None  # Optional, will use path parameter if not provided
+    trigger_type: str  # 'premium_high', 'premium_low'
+    threshold_value: Optional[float] = None  # Optional for limit_change triggers
+    enabled: bool = True
+
+
+@app.get("/api/notifications/funds/{fund_code}/triggers")
+async def get_fund_triggers(fund_code: str):
+    """Get all triggers for a specific fund."""
+    from notifications.models import get_db, FundTrigger
+
+    session = get_db()
+    try:
+        # Get all triggers, not just enabled ones
+        triggers = session.query(FundTrigger).filter_by(
+            fund_code=fund_code
+        ).all()
+
+        return [
+            {
+                'id': t.id,
+                'fund_code': t.fund_code,
+                'trigger_type': t.trigger_type,
+                'threshold_value': t.threshold_value,
+                'enabled': t.enabled
+            }
+            for t in triggers
+        ]
+
+    except Exception as e:
+        logger.error(f"Failed to get triggers for {fund_code}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
+
+
+@app.post("/api/notifications/funds/{fund_code}/triggers")
+async def create_fund_trigger(fund_code: str, trigger: FundTriggerModel):
+    """Create a new trigger for a fund. If trigger type exists, update it."""
+    from notifications.models import get_db, FundTrigger
+
+    session = get_db()
+    try:
+        # Check if trigger of this type already exists
+        existing = session.query(FundTrigger).filter_by(
+            fund_code=fund_code,
+            trigger_type=trigger.trigger_type
+        ).first()
+
+        if existing:
+            # Update existing trigger
+            existing.threshold_value = trigger.threshold_value
+            existing.enabled = trigger.enabled
+            session.commit()
+            save_triggers_to_json()  # Save to JSON file
+            logger.info(f"Updated trigger for {fund_code}: {trigger.trigger_type} @ {trigger.threshold_value}")
+            return {"status": "updated", "id": existing.id}
+        else:
+            # Create new trigger
+            new_trigger = FundTrigger(
+                fund_code=fund_code,
+                trigger_type=trigger.trigger_type,
+                threshold_value=trigger.threshold_value,
+                enabled=trigger.enabled
+            )
+            session.add(new_trigger)
+            session.commit()
+            save_triggers_to_json()  # Save to JSON file
+            logger.info(f"Created trigger for {fund_code}: {trigger.trigger_type} @ {trigger.threshold_value}")
+            return {"status": "created", "id": new_trigger.id}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to create trigger: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
+
+
+@app.put("/api/notifications/funds/{fund_code}/triggers/{trigger_id}")
+async def update_fund_trigger(fund_code: str, trigger_id: int, trigger: FundTriggerModel):
+    """Update an existing trigger."""
+    from notifications.models import get_db, FundTrigger
+
+    session = get_db()
+    try:
+        existing = session.query(FundTrigger).filter_by(id=trigger_id, fund_code=fund_code).first()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Trigger not found")
+
+        existing.trigger_type = trigger.trigger_type
+        existing.threshold_value = trigger.threshold_value
+        existing.enabled = trigger.enabled
+        existing.updated_at = datetime.utcnow()
+
+        session.commit()
+        save_triggers_to_json()  # Save to JSON file
+        logger.info(f"Updated trigger {trigger_id} for {fund_code}")
+        return {"status": "success"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to update trigger: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
+
+
+@app.delete("/api/notifications/funds/{fund_code}/triggers/{trigger_id}")
+async def delete_fund_trigger(fund_code: str, trigger_id: int):
+    """Delete a trigger."""
+    from notifications.models import get_db, FundTrigger
+
+    session = get_db()
+    try:
+        trigger = session.query(FundTrigger).filter_by(id=trigger_id, fund_code=fund_code).first()
+        if not trigger:
+            raise HTTPException(status_code=404, detail="Trigger not found")
+
+        session.delete(trigger)
+        session.commit()
+        save_triggers_to_json()  # Save to JSON file
+
+        logger.info(f"Deleted trigger {trigger_id} for {fund_code}")
+        return {"status": "success"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to delete trigger: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
+
+
+@app.get("/api/notifications/triggers")
+async def get_all_triggers():
+    """Get all triggers for all funds."""
+    from notifications.models import get_db, FundTrigger
+
+    session = get_db()
+    try:
+        triggers = session.query(FundTrigger).filter_by(enabled=True).all()
+
+        # Group by fund_code
+        result = {}
+        for t in triggers:
+            if t.fund_code not in result:
+                result[t.fund_code] = []
+            result[t.fund_code].append({
+                'id': t.id,
+                'trigger_type': t.trigger_type,
+                'threshold_value': t.threshold_value
+            })
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to get all triggers: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         session.close()

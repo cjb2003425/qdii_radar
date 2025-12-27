@@ -83,6 +83,21 @@ class MonitoredFund(Base):
         return f"<MonitoredFund(code={self.fund_code}, enabled={self.enabled})>"
 
 
+class FundTrigger(Base):
+    """User-defined triggers for specific funds."""
+    __tablename__ = 'fund_triggers'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fund_code = Column(String(20), nullable=False, index=True)
+    trigger_type = Column(String(50), nullable=False)  # 'premium_high', 'premium_low', 'limit_change'
+    threshold_value = Column(Float, nullable=True)  # e.g., 5.0 for premium rate
+    enabled = Column(Boolean, default=True, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<FundTrigger(fund={self.fund_code}, type={self.trigger_type}, threshold={self.threshold_value})>"
+
+
 # Database setup
 DATABASE_URL = "sqlite:///data/notifications.db"
 engine = create_engine(

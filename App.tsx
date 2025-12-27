@@ -25,7 +25,24 @@ const App: React.FC = () => {
         const data = await fetchQDIIFunds();
 
         // Load monitoring preferences from localStorage
-        const monitoringPrefs = loadMonitoringPreferences();
+        let monitoringPrefs = loadMonitoringPreferences();
+
+        // Sync with backend to get the latest monitored funds
+        try {
+          const response = await fetch('http://127.0.0.1:8000/api/notifications/monitored-funds');
+          if (response.ok) {
+            const monitoredFunds = await response.json();
+            // Update localStorage to match backend
+            const syncedPrefs: Record<string, boolean> = {};
+            data.forEach(fund => {
+              syncedPrefs[fund.id] = monitoredFunds.includes(fund.id);
+            });
+            monitoringPrefs = syncedPrefs;
+            saveMonitoringPreferences(syncedPrefs);
+          }
+        } catch (error) {
+          console.error("Failed to sync monitoring state:", error);
+        }
 
         // Merge monitoring preferences with fund data
         const fundsWithMonitoring = data.map(fund => ({
@@ -94,9 +111,11 @@ const App: React.FC = () => {
   // Calculate page counts
   const lofCount = funds.filter(f => f.valuation > 0).length;
   const allCount = funds.length;
+  const nasdaqCount = funds.filter(f => f.name.includes('纳指')).length;
 
   const pages = [
     { id: 'all', label: '全部基金', count: allCount },
+    { id: 'nasdaq', label: '纳斯达克', count: nasdaqCount },
     { id: 'lof', label: 'LOF基金', count: lofCount },
   ];
 
@@ -170,6 +189,10 @@ const App: React.FC = () => {
               onToggle={handleToggle}
               onDelete={handleDeleteFund}
               onToggleMonitoring={handleToggleMonitoring}
+              onTriggerChange={() => {
+                // Optional: Refresh data when triggers change
+                // Currently no-op, but can be used to trigger refresh if needed
+              }}
             />
           </>
         )}
