@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>测试基金管理</title>
+</head>
+<body>
+    <h1>localStorage测试</h1>
+    <button onclick="addTestFunds()">添加测试基金</button>
+    <button onclick="showFunds()">显示基金</button>
+    <button onclick="clearFunds()">清空基金</button>
+    <pre id="output"></pre>
+
+    <script>
+        function addTestFunds() {
+            const testFunds = [
+                { code: '000001', name: '华夏成长混合', addedAt: new Date().toISOString() },
+                { code: '000002', name: '万科A', addedAt: new Date().toISOString() },
+                { code: '000003', name: '中国平安', addedAt: new Date().toISOString() }
+            ];
+            localStorage.setItem('user_funds', JSON.stringify(testFunds));
+            showFunds();
+        }
+
+        function showFunds() {
+            const funds = JSON.parse(localStorage.getItem('user_funds') || '[]');
+            document.getElementById('output').textContent = JSON.stringify(funds, null, 2);
+        }
+
+        function clearFunds() {
+            localStorage.removeItem('user_funds');
+            showFunds();
+        }
+
+        showFunds();
+    </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "smtp_enabled": false,
+  "email_provider": "ses",
+  "smtp_from_email": "your-verified-email@example.com",
+  "aws_region": "us-east-1",
+  "aws_access_key_id": "AKIAIOSFODNN7EXAMPLE",
+  "aws_secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+  "_comment": {
+    "smtp_enabled": "Set to true to enable email notifications",
+    "email_provider": "Email provider: 'ses' for Amazon SES, 'smtp' for traditional SMTP",
+    "smtp_from_email": "Email address to send from (must be verified in SES if using SES)",
+    "aws_region": "AWS region for SES (e.g., us-east-1, us-west-2, ap-southeast-1, eu-west-1)",
+    "aws_access_key_id": "AWS access key ID with SES permissions",
+    "aws_secret_access_key": "AWS secret access key",
+    "ses_setup": "To use Amazon SES: 1) Verify sender email in SES console, 2) Create IAM user with ses:SendEmail permission, 3) Use the credentials here",
+    "ses_sandbox": "Note: SES sandbox mode requires all recipient emails to be verified. Request production access to send to any email.",
+    "smtp_fallback": "For SMTP: set email_provider to 'smtp' and configure smtp_host, smtp_port, smtp_username, smtp_password"
+  }
+}

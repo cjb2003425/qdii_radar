@@ -1,0 +1,5 @@
+{
+  "name": "ArbitrageRadar",
+  "description": "A financial dashboard for monitoring ETF arbitrage opportunities, premium rates, and fund valuations.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,186 @@
+{
+  "funds": [
+    {
+      "code": "015299",
+      "name": "华夏纳指100ETF联接A"
+    },
+    {
+      "code": "019547",
+      "name": "招商纳指100ETF联接A"
+    },
+    {
+      "code": "018043",
+      "name": "天弘纳指100指数A"
+    },
+    {
+      "code": "270042",
+      "name": "广发纳指100ETF联接A"
+    },
+    {
+      "code": "000834",
+      "name": "大成纳指100ETF联接A"
+    },
+    {
+      "code": "040046",
+      "name": "华安纳指100ETF联接A"
+    },
+    {
+      "code": "019441",
+      "name": "万家纳指100指数A"
+    },
+    {
+      "code": "019442",
+      "name": "万家纳斯达克100指数发起式C"
+    },
+    {
+      "code": "019172",
+      "name": "摩根纳指100指数A"
+    },
+    {
+      "code": "002732",
+      "name": "易方达纳指100ETF联接美元A"
+    },
+    {
+      "code": "017436",
+      "name": "华宝纳指精选股票A"
+    },
+    {
+      "code": "007280",
+      "name": "摩根日本精选股票A"
+    },
+    {
+      "code": "008763",
+      "name": "天弘越南市场股票A"
+    },
+    {
+      "code": "006105",
+      "name": "宏利印度机会股票A"
+    },
+    {
+      "code": "006282",
+      "name": "摩根欧洲动力策略股票A"
+    },
+    {
+      "code": "020712",
+      "name": "华安日经225ETF联接A"
+    },
+    {
+      "code": "021189",
+      "name": "南方亚太精选ETF联接A"
+    },
+    {
+      "code": "021190",
+      "name": "南方亚太精选ETF联接C"
+    },
+    {
+      "code": "160216",
+      "name": "国泰大宗商品(QDII-LOF)A"
+    },
+    {
+      "code": "161226",
+      "name": "国投瑞银白银期货(LOF)A"
+    },
+    {
+      "code": "164701",
+      "name": "汇添富黄金及贵金属(QDII-LOF-FOF)A"
+    },
+    {
+      "code": "161130",
+      "name": "易方达纳指100ETF联接A"
+    },
+    {
+      "code": "539001",
+      "name": "建信纳斯达克100指数(QDII-LOF)A人民币"
+    },
+    {
+      "code": "513300",
+      "name": "华夏纳斯达克100ETF(QDII)"
+    },
+    {
+      "code": "513100",
+      "name": "国泰纳斯达克100ETF(QDII)"
+    },
+    {
+      "code": "159659",
+      "name": "招商纳斯达克100ETF"
+    },
+    {
+      "code": "016452",
+      "name": "南方纳斯达克100指数发起(QDII)A"
+    },
+    {
+      "code": "159696",
+      "name": "易方达纳斯达克100ETF"
+    },
+    {
+      "code": "018966",
+      "name": "汇添富纳斯达克100ETF发起式联接(QDII)人民币A"
+    },
+    {
+      "code": "021000",
+      "name": "南方纳斯达克100指数发起(QDII)I"
+    },
+    {
+      "code": "019737",
+      "name": "宝盈纳斯达克100指数发起(QDII)C人民币"
+    },
+    {
+      "code": "159501",
+      "name": "嘉实纳斯达克100ETF"
+    },
+    {
+      "code": "513870",
+      "name": "富国纳斯达克100ETF"
+    },
+    {
+      "code": "016055",
+      "name": "博时纳斯达克100ETF发起式联接(QDII)A人民币"
+    },
+    {
+      "code": "019736",
+      "name": "宝盈纳斯达克100指数发起(QDII)A人民币"
+    },
+    {
+      "code": "161128",
+      "name": "易方达标普信息科技指数(QDII-LOF)A(人民币)"
+    },
+    {
+      "code": "501312",
+      "name": "华宝海外科技股票(QDII-LOF)A"
+    },
+    {
+      "code": "160213",
+      "name": "国泰纳斯达克100指数"
+    },
+    {
+      "code": "012870",
+      "name": "易方达纳斯达克100ETF联接(QDII-LOF)C(人民币)"
+    }
+  ],
+  "config": {
+    "api": {
+      "backendUrl": "http://127.0.0.1:8000/api/funds",
+      "requestTimeout": 20000,
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38"
+    },
+    "proxy": [
+      {
+        "name": "AllOrigins",
+        "urlTemplate": "https://api.allorigins.win/raw?url={url}"
+      },
+      {
+        "name": "CodeTabs",
+        "urlTemplate": "https://api.codetabs.com/v1/proxy?quest={url}"
+      }
+    ],
+    "request": {
+      "proxyTimeout": 3000,
+      "chunkSize": 20,
+      "scriptTimeout": 4000
+    },
+    "dataSourceUrls": {
+      "eastmoneyApi": "https://push2.eastmoney.com/api/qt/ulist.np/get",
+      "fundDetail": "https://fundf10.eastmoney.com/jjfl_{code}.html"
+    }
+  }
+}
