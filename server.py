@@ -1843,6 +1843,26 @@ async def get_all_triggers():
         session.close()
 
 
+def load_server_config():
+    """Load server configuration from funds.json"""
+    try:
+        funds_file_path = Path(__file__).parent / "data" / "funds.json"
+        with open(funds_file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        server_config = data.get("config", {}).get("server", {})
+        host = server_config.get("host", "127.0.0.1")
+        port = server_config.get("port", 8000)
+
+        logger.info(f"Loaded server config: host={host}, port={port}")
+        return host, port
+    except Exception as e:
+        logger.warning(f"Failed to load server config, using defaults: {e}")
+        return "127.0.0.1", 8000
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+
+    host, port = load_server_config()
+    uvicorn.run(app, host=host, port=port)

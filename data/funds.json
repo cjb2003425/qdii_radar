@@ -158,6 +158,10 @@
     }
   ],
   "config": {
+    "server": {
+      "host": "127.0.0.1",
+      "port": 8000
+    },
     "api": {
       "backendUrl": "http://127.0.0.1:8000/api/funds",
       "requestTimeout": 20000,
