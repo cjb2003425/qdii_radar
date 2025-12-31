@@ -160,10 +160,12 @@
   "config": {
     "server": {
       "host": "127.0.0.1",
-      "port": 8000
+      "port": 8088,
+      "note": "Change port here. Backend will use this port on startup."
     },
     "api": {
-      "backendUrl": "http://127.0.0.1:8000/api/funds",
+      "backendUrl": "http://127.0.0.1:8088/api/funds",
+      "note": "Make sure backendUrl matches server.host:server.port",
       "requestTimeout": 20000,
       "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38"
     },

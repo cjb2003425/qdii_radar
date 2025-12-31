@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_CONFIG } from '../config/api';
 import { addUserFund, removeUserFund, getUserFunds, canAddUserFund } from '../services/userFundService';
 import { FundData } from '../types/fund';
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Switch } from '@headlessui/react';
+import { API_CONFIG } from '../config/api';
 
 interface MonitoringConfig {
   monitoring_enabled: string;
@@ -55,7 +56,7 @@ export default function MonitoringControl() {
 
   const fetchConfig = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/notifications/monitoring/config');
+      const response = await fetch(`${API_CONFIG.notifications}/monitoring/config`);
       if (response.ok) {
         const data = await response.json();
         setConfig(data);
@@ -67,7 +68,7 @@ export default function MonitoringControl() {
 
   const fetchStatus = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/notifications/monitoring/status');
+      const response = await fetch(`${API_CONFIG.notifications}/monitoring/status`);
       if (response.ok) {
         const data = await response.json();
         setStatus(data);
@@ -79,7 +80,7 @@ export default function MonitoringControl() {
 
   const fetchLastEmailSent = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/notifications/history?limit=1&offset=0');
+      const response = await fetch(`${API_CONFIG.notifications}/history?limit=1&offset=0`);
       if (response.ok) {
         const data = await response.json();
         if (Array.isArray(data) && data.length > 0) {
@@ -98,7 +99,7 @@ export default function MonitoringControl() {
   const toggleMonitoring = async () => {
     setToggling(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/notifications/monitoring/toggle', {
+      const response = await fetch(`${API_CONFIG.notifications}/monitoring/toggle`, {
         method: 'POST',
       });
       if (response.ok) {
@@ -115,7 +116,7 @@ export default function MonitoringControl() {
 
   const updateTimePeriod = async (period: string) => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/notifications/config/alert_time_period', {
+      const response = await fetch(`${API_CONFIG.notifications}/config/alert_time_period`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value: period })
@@ -131,7 +132,7 @@ export default function MonitoringControl() {
   const updateCheckInterval = async (seconds: number) => {
     setUpdatingInterval(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/notifications/config/check_interval_seconds', {
+      const response = await fetch(`${API_CONFIG.notifications}/config/check_interval_seconds`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value: seconds.toString() })

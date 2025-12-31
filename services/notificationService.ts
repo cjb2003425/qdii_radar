@@ -3,14 +3,14 @@
  */
 
 import { FundTrigger, AllTriggersResponse, CreateTriggerRequest, UpdateTriggerRequest } from '../types/notifications';
-
-const API_BASE = 'http://127.0.0.1:8000/api/notifications';
+import { getApiUrls } from '../config/api';
 
 /**
  * Get all triggers for a specific fund
  */
 export async function getFundTriggers(fundCode: string): Promise<FundTrigger[]> {
-  const response = await fetch(`${API_BASE}/funds/${fundCode}/triggers`);
+  const apiUrls = getApiUrls();
+  const response = await fetch(`${apiUrls.notifications}/funds/${fundCode}/triggers`);
   if (!response.ok) {
     throw new Error(`Failed to get triggers for fund ${fundCode}`);
   }
@@ -22,7 +22,7 @@ export async function getFundTriggers(fundCode: string): Promise<FundTrigger[]> 
  * Get all triggers grouped by fund
  */
 export async function getAllTriggers(): Promise<AllTriggersResponse> {
-  const response = await fetch(`${API_BASE}/triggers`);
+  const response = await fetch(`${apiUrls.notifications}/triggers`);
   if (!response.ok) {
     throw new Error('Failed to get all triggers');
   }
@@ -36,7 +36,7 @@ export async function createTrigger(
   fundCode: string,
   trigger: CreateTriggerRequest
 ): Promise<FundTrigger> {
-  const response = await fetch(`${API_BASE}/funds/${fundCode}/triggers`, {
+  const response = await fetch(`${apiUrls.notifications}/funds/${fundCode}/triggers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(trigger)
@@ -57,7 +57,7 @@ export async function updateTrigger(
   triggerId: number,
   updates: UpdateTriggerRequest
 ): Promise<FundTrigger> {
-  const response = await fetch(`${API_BASE}/funds/${fundCode}/triggers/${triggerId}`, {
+  const response = await fetch(`${apiUrls.notifications}/funds/${fundCode}/triggers/${triggerId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates)
@@ -75,7 +75,7 @@ export async function updateTrigger(
  * Delete a trigger
  */
 export async function deleteTrigger(fundCode: string, triggerId: number): Promise<void> {
-  const response = await fetch(`${API_BASE}/funds/${fundCode}/triggers/${triggerId}`, {
+  const response = await fetch(`${apiUrls.notifications}/funds/${fundCode}/triggers/${triggerId}`, {
     method: 'DELETE'
   });
 
