@@ -247,51 +247,6 @@ class NotificationMonitor:
                         alerts_sent += 1
                         logger.info(f"Premium alert sent for {fund_code}")
 
-            # Check each monitored fund for limit changes
-            # DISABLED: Limit change email notifications are disabled per user request
-            # for fund in monitored_funds_list:
-            #     fund_code = fund.get('id') or fund.get('code')
-            #     fund_name = fund.get('name', '')
-            #     limit_text = fund.get('limitText', '')
-            #
-            #     # Only check limit change if the fund has limit_change trigger enabled
-            #     if not self.tracker.has_limit_change_trigger(fund_code):
-            #         logger.debug(f"Skipping limit change check for {fund_code}: no trigger enabled")
-            #         continue
-            #
-            #     # Check limit change
-            #     alert = await self.tracker.detect_limit_change(
-            #         fund_code=fund_code,
-            #         fund_name=fund_name,
-            #         current_limit=limit_text
-            #     )
-            #
-            #     if alert:
-            #         # Check if current time is within alert time period
-            #         if not self.tracker.is_within_alert_time_period():
-            #             logger.info(f"Skipping limit change alert for {fund_code}: outside configured time period")
-            #             continue
-            #
-            #         success = await self.email_service.send_limit_change_alert(
-            #             fund_code=alert['fund_code'],
-            #             fund_name=alert['fund_name'],
-            #             old_limit=alert['old_value'],
-            #             new_limit=alert['new_value'],
-            #             recipients=recipients
-            #         )
-            #
-            #         if success:
-            #             await self.tracker.mark_notification_sent(
-            #                 fund_code=alert['fund_code'],
-            #                 fund_name=alert['fund_name'],
-            #                 alert_type=alert['alert_type'],
-            #                 old_value=alert['old_value'],
-            #                 new_value=alert['new_value'],
-            #                 recipient_email=', '.join(recipients)
-            #             )
-            #             alerts_sent += 1
-            #             logger.info(f"Limit change alert sent for {fund_code}")
-
             # Check each monitored fund for limit_high (purchase limit higher than threshold)
             for fund in monitored_funds_list:
                 fund_code = fund.get('id') or fund.get('code')
