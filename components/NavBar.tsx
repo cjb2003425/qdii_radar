@@ -14,7 +14,7 @@ interface Props {
 
 const NavBar: React.FC<Props> = ({ currentPage, pages, onPageChange }) => {
   return (
-    <div className="flex items-center gap-2 px-4 py-3 bg-white border-b border-gray-200">
+    <div className="flex items-center gap-2 px-3 py-2.5 bg-white border-b border-gray-200 safe-area-top">
       {pages.map((page) => {
         const isActive = currentPage === page.id;
         return (
@@ -22,15 +22,15 @@ const NavBar: React.FC<Props> = ({ currentPage, pages, onPageChange }) => {
             key={page.id}
             onClick={() => onPageChange(page.id)}
             className={`
-              px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
-              flex items-center gap-2
+              px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200
+              flex items-center gap-1.5 min-h-[44px]
               ${isActive
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }
             `}
           >
-            <span>{page.label}</span>
+            <span className="whitespace-nowrap">{page.label}</span>
             {page.count !== undefined && (
               <span className={`
                 px-2 py-0.5 rounded-full text-xs font-semibold

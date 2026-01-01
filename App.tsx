@@ -192,13 +192,14 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center w-full">
-      {/* 
-        Responsive Container: 
+      {/*
+        Responsive Container:
         - w-full for mobile
-        - max-w-3xl for tablet/desktop to resemble a dashboard 
+        - max-w-3xl for tablet/desktop to resemble a dashboard
         - shadow for better aesthetics on desktop
+        - safe-area-all for iPhone 15 notch support
       */}
-      <div className="w-full max-w-3xl bg-white min-h-screen shadow-xl relative flex flex-col md:border-x md:border-gray-200">
+      <div className="w-full max-w-3xl bg-white min-h-screen shadow-xl relative flex flex-col md:border-x md:border-gray-200 safe-area-all">
         
         {loading ? (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-2 pb-20">

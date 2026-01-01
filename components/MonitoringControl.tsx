@@ -186,31 +186,31 @@ export default function MonitoringControl() {
   const isTradingHours = config.alert_time_period === 'trading_hours';
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 px-3">
       {/* Main Status Card */}
       <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
         {/* Header with gradient */}
-        <div className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 px-4 py-2.5">
+        <div className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 px-3 py-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1.5">
               <div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm">
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
               </div>
               <div>
-                <h2 className="text-sm font-bold text-white">
+                <h2 className="text-xs sm:text-sm font-bold text-white">
                   监控控制
                 </h2>
               </div>
             </div>
-            <div className={`px-2 py-1 rounded-full flex items-center space-x-1.5 shadow-md backdrop-blur-sm ${
+            <div className={`px-2 py-1 rounded-full flex items-center space-x-1 shadow-md backdrop-blur-sm ${
               status.is_running
                 ? 'bg-white/30 border border-white/50'
                 : 'bg-white/20 border border-white/30'
             }`}>
               <PulseIcon active={status.is_running} />
-              <span className={`text-xs font-semibold text-white`}>
+              <span className={`text-[10px] sm:text-xs font-semibold text-white`}>
                 {status.is_running ? '运行中' : '已停止'}
               </span>
             </div>
@@ -218,8 +218,8 @@ export default function MonitoringControl() {
         </div>
 
         {/* Control Section */}
-        <div className="p-3 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="p-2.5 space-y-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             {/* Monitoring Toggle */}
             <div className={`relative overflow-hidden rounded-lg border transition-all duration-300 ${
               isMonitoringEnabled
@@ -361,19 +361,19 @@ export default function MonitoringControl() {
         </div>
       </div>
 
-      {/* Status Cards - All in one row with narrow first 3 cards */}
-      <div className="grid grid-cols-[auto_auto_auto_minmax(140px,1.5fr)_minmax(140px,1.5fr)] gap-2">
+      {/* Status Cards - Responsive grid layout */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-[auto_auto_auto_minmax(120px,1fr)_minmax(120px,1fr)] gap-1.5 sm:gap-2">
         {/* Monitor Status */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 px-2 py-2.5 min-w-[70px]">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 px-2 py-2">
           <div className="flex items-center space-x-1.5">
             <div className="p-1 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shrink-0">
-              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] text-gray-500">监控</p>
-              <p className="text-xs font-bold text-gray-900 truncate">
+              <p className="text-[9px] text-gray-500">监控</p>
+              <p className="text-[11px] font-bold text-gray-900 truncate">
                 {isMonitoringEnabled ? '已启用' : '已禁用'}
               </p>
             </div>
@@ -381,20 +381,20 @@ export default function MonitoringControl() {
         </div>
 
         {/* Running Status */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 px-2 py-2.5 min-w-[70px]">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 px-2 py-2">
           <div className="flex items-center space-x-1.5">
             <div className={`p-1 rounded-lg shrink-0 ${
               status.is_running
                 ? 'bg-gradient-to-br from-green-500 to-emerald-600'
                 : 'bg-gradient-to-br from-gray-400 to-gray-500'
             }`}>
-              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] text-gray-500">状态</p>
-              <p className={`text-xs font-bold truncate ${
+              <p className="text-[9px] text-gray-500">状态</p>
+              <p className={`text-[11px] font-bold truncate ${
                 status.is_running ? 'text-green-600' : 'text-gray-600'
               }`}>
                 {status.is_running ? '运行中' : '已停止'}
@@ -404,16 +404,16 @@ export default function MonitoringControl() {
         </div>
 
         {/* Check Interval */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 px-2 py-2.5 min-w-[70px]">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 px-2 py-2">
           <div className="flex items-center space-x-1.5">
             <div className="p-1 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shrink-0">
-              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] text-gray-500">间隔</p>
-              <p className="text-xs font-bold text-gray-900">
+              <p className="text-[9px] text-gray-500">间隔</p>
+              <p className="text-[11px] font-bold text-gray-900">
                 {statusIntervalMinutes}分
               </p>
             </div>
@@ -421,16 +421,16 @@ export default function MonitoringControl() {
         </div>
 
         {/* Last Check Time */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5">
-          <div className="flex items-center space-x-2">
-            <div className="p-1.5 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg shrink-0">
-              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="hidden md:block bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+          <div className="flex items-center space-x-1.5">
+            <div className="p-1 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg shrink-0">
+              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500">上次检查</p>
-              <p className="text-xs font-semibold text-gray-900 truncate">
+              <p className="text-[10px] text-gray-500">上次检查</p>
+              <p className="text-[11px] font-semibold text-gray-900 truncate">
                 {status.last_check_time ? formatTime(status.last_check_time) : '从未'}
               </p>
             </div>
@@ -438,18 +438,50 @@ export default function MonitoringControl() {
         </div>
 
         {/* Last Email Sent */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5">
-          <div className="flex items-center space-x-2">
-            <div className="p-1.5 bg-gradient-to-br from-pink-500 to-pink-600 rounded-lg shrink-0">
-              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="hidden md:block bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+          <div className="flex items-center space-x-1.5">
+            <div className="p-1 bg-gradient-to-br from-pink-500 to-pink-600 rounded-lg shrink-0">
+              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500">上次邮件</p>
-              <p className="text-xs font-semibold text-gray-900 truncate">
+              <p className="text-[10px] text-gray-500">上次邮件</p>
+              <p className="text-[11px] font-semibold text-gray-900 truncate">
                 {lastEmailSent}
               </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile-only combined status for last check and email */}
+        <div className="md:hidden col-span-2 bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center space-x-1.5">
+              <div className="p-1 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg shrink-0">
+                <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[9px] text-gray-500">上次检查</p>
+                <p className="text-[11px] font-semibold text-gray-900 truncate">
+                  {status.last_check_time ? formatTime(status.last_check_time).split(' ')[1] : '从未'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <div className="p-1 bg-gradient-to-br from-pink-500 to-pink-600 rounded-lg shrink-0">
+                <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[9px] text-gray-500">上次邮件</p>
+                <p className="text-[11px] font-semibold text-gray-900 truncate">
+                  {lastEmailSent.includes(' ') ? lastEmailSent.split(' ')[1] : lastEmailSent}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -459,17 +491,17 @@ export default function MonitoringControl() {
       {!isMonitoringEnabled && (
         <div className="relative overflow-hidden rounded-lg shadow-md border border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50">
           <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-amber-200/50 to-transparent rounded-bl-full"></div>
-          <div className="relative p-3">
+          <div className="relative p-2.5">
             <div className="flex items-start space-x-2">
               <div className="flex-shrink-0">
-                <div className="p-2 bg-gradient-to-br from-amber-400 to-amber-500 rounded-lg shadow-md">
-                  <svg className="w-4 h-4 text-white" viewBox="0 0 20 20" fill="currentColor">
+                <div className="p-1.5 bg-gradient-to-br from-amber-400 to-amber-500 rounded-lg shadow-md">
+                  <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                   </svg>
                 </div>
               </div>
               <div className="flex-1">
-                <p className="text-xs text-amber-800 leading-relaxed">
+                <p className="text-[11px] text-amber-800 leading-relaxed">
                   系统将不会检查基金溢价率或发送警报邮件。
                 </p>
               </div>

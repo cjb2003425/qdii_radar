@@ -216,11 +216,11 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-8 right-8 bg-[#ea3323] hover:bg-[#c42b1E] text-white p-4 rounded-full shadow-lg transition-all duration-200 z-50 flex items-center justify-center hover:scale-110"
+        className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 bg-[#ea3323] hover:bg-[#c42b1E] text-white p-4 rounded-full shadow-lg transition-all duration-200 z-50 flex items-center justify-center hover:scale-110 safe-area-bottom"
         title="管理基金"
-        style={{ minWidth: '60px', minHeight: '60px' }}
+        style={{ minWidth: '56px', minHeight: '56px' }}
       >
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-7 h-7 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
         </svg>
       </button>
@@ -228,18 +228,18 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 safe-area-all">
+      <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#ea3323] to-[#c42b1E] text-white px-4 py-3">
+        <div className="bg-gradient-to-r from-[#ea3323] to-[#c42b1E] text-white px-4 py-3 shrink-0">
           <div className="flex justify-between items-center">
             <div>
-              <h2 className="text-lg font-bold">基金管理</h2>
-              <p className="text-white/80 text-xs mt-0.5">共 {allFunds.length} 只基金</p>
+              <h2 className="text-base sm:text-lg font-bold">基金管理</h2>
+              <p className="text-white/80 text-[11px] sm:text-xs mt-0.5">共 {allFunds.length} 只基金</p>
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="text-white hover:bg-white/20 rounded-full p-1.5 transition-colors"
+              className="text-white hover:bg-white/20 rounded-full p-1.5 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -248,7 +248,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
           </div>
         </div>
 
-        <div className="p-4 overflow-y-auto max-h-[70vh]">
+        <div className="p-3 sm:p-4 overflow-y-auto flex-1">
           {/* Add Fund Form */}
           <div className="mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
             <h3 className="text-sm font-semibold text-gray-900 mb-2">添加新基金</h3>
@@ -260,14 +260,14 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   placeholder="输入6位基金代码"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ea3323] focus:border-transparent text-sm"
+                  className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ea3323] focus:border-transparent text-base"
                   maxLength={6}
                   disabled={loading}
                 />
                 <button
                   type="submit"
                   disabled={loading}
-                  className="bg-[#ea3323] hover:bg-[#c42b1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-400 min-w-[80px]"
+                  className="bg-[#ea3323] hover:bg-[#c42b1E] text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-400 min-h-[44px] min-w-[80px]"
                 >
                   {loading ? '添加中...' : '添加'}
                 </button>
@@ -306,7 +306,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                   {!isBatchMode && (
                     <button
                       onClick={() => setIsBatchMode(true)}
-                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg text-xs font-medium transition-colors min-h-[36px] sm:min-h-[44px]"
                     >
                       批量管理
                     </button>
@@ -315,7 +315,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                     <>
                       <button
                         onClick={handleSelectAll}
-                        className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                        className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-2 rounded-lg text-xs font-medium transition-colors min-h-[36px] sm:min-h-[44px]"
                       >
                         {selectedFunds.size === allFunds.length ? '取消全选' : '全选'}
                       </button>
@@ -324,7 +324,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                           setIsBatchMode(false);
                           setSelectedFunds(new Set());
                         }}
-                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg text-xs font-medium transition-colors min-h-[36px] sm:min-h-[44px]"
                       >
                         取消
                       </button>
@@ -338,7 +338,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                   <span className="text-blue-700 text-xs font-medium">已选择 {selectedFunds.size} 只基金</span>
                   <button
                     onClick={handleBatchDelete}
-                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-xs font-medium transition-colors min-h-[36px] sm:min-h-[44px]"
                   >
                     删除选中
                   </button>
@@ -374,8 +374,9 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                       {!isBatchMode && (
                         <button
                           onClick={() => handleRemoveFund(fund.code, fund.isUserAdded || false)}
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded-lg transition-colors shrink-0"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors shrink-0"
                           title="删除基金"
+                          style={{ minWidth: '40px', minHeight: '40px' }}
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
