@@ -15,6 +15,13 @@ const FundRow: React.FC<Props> = ({ fund, onToggle, onDelete, onToggleMonitoring
   const isLimitRestricted = fund.limitText && (fund.limitText.includes('暂停') || fund.limitText.includes('限'));
   const [showTriggerSettings, setShowTriggerSettings] = useState(false);
 
+  // Debug: Log when monitoring state changes
+  React.useEffect(() => {
+    if (fund.monitoringEnabled) {
+      console.log(`✅ Settings icon should be visible for fund ${fund.code} (${fund.name})`);
+    }
+  }, [fund.monitoringEnabled, fund.code, fund.name]);
+
   return (
     <>
       <div className="flex items-center py-2.5 px-2 bg-white border-b border-gray-100 text-sm hover:bg-gray-50 transition-colors">
@@ -92,10 +99,10 @@ const FundRow: React.FC<Props> = ({ fund, onToggle, onDelete, onToggleMonitoring
         </div>
 
         {/* Column 6: Monitoring Toggle Switch & Settings */}
-        <div className="w-[23%] sm:w-[11%] flex items-center justify-center gap-0.5">
+        <div className="w-[23%] sm:w-[11%] flex items-center justify-center gap-0.5 flex-shrink-0">
           {onToggleMonitoring && (
             <>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                 <input
                   type="checkbox"
                   className="sr-only peer"
@@ -106,12 +113,16 @@ const FundRow: React.FC<Props> = ({ fund, onToggle, onDelete, onToggleMonitoring
               </label>
               {fund.monitoringEnabled && (
                 <button
-                  onClick={() => setShowTriggerSettings(!showTriggerSettings)}
-                  className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg flex items-center justify-center transition-colors"
-                  style={{ minWidth: '40px', minHeight: '44px' }}
+                  onClick={() => {
+                    console.log(`🔧 Settings button clicked for ${fund.code}`);
+                    setShowTriggerSettings(!showTriggerSettings);
+                  }}
+                  className="text-blue-600 hover:text-blue-800 hover:bg-blue-100 active:bg-blue-200 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
+                  style={{ width: '38px', height: '44px' }}
                   title="配置触发器"
+                  aria-label="配置触发器"
                 >
-                  <svg className="w-4.5 h-4.5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
