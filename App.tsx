@@ -8,7 +8,7 @@ import Footer from './components/Footer';
 import { FundData } from './types/fund';
 import { fetchQDIIFunds } from './services/fundService';
 import { initializeFunds, removeUserFund } from './services/userFundService';
-import { initApiConfig, getApiUrls } from './config/api';
+import { API_CONFIG } from './config/api';
 
 const App: React.FC = () => {
   const [funds, setFunds] = useState<FundData[]>([]);
@@ -22,10 +22,6 @@ const App: React.FC = () => {
     const loadFunds = async () => {
       setLoading(true);
       try {
-        // Initialize API config from data/funds.json
-        await initApiConfig();
-        const apiUrls = getApiUrls();
-
         // 初始化预设基金（仅第一次）
         initializeFunds();
 
@@ -36,7 +32,7 @@ const App: React.FC = () => {
 
         // Sync with backend to get the latest monitored funds
         try {
-          const response = await fetch(`${apiUrls.notifications}/monitored-funds`);
+          const response = await fetch(`${API_CONFIG.notifications}/monitored-funds`);
           if (response.ok) {
             const monitoredFunds = await response.json();
             // Update localStorage to match backend
@@ -105,8 +101,7 @@ const App: React.FC = () => {
     // Sync to backend
     try {
       const monitoredFunds = Object.keys(prefs).filter(code => prefs[code]);
-      const apiUrls = getApiUrls();
-      await fetch(`${apiUrls.notifications}/monitored-funds`, {
+      await fetch(`${API_CONFIG.notifications}/monitored-funds`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ funds: monitoredFunds })
@@ -150,9 +145,8 @@ const App: React.FC = () => {
       if (window.confirm(`确定要删除基金 "${fund.name}" (${fund.code}) 吗？`)) {
         // Call backend API to delete from funds.json and monitoring database
         let backendDeleted = false;
-        const apiUrls = getApiUrls();
         try {
-          const deleteResponse = await fetch(`${apiUrls.funds.replace('/api/funds', '')}/api/fund/${fund.code}`, {
+          const deleteResponse = await fetch(`${API_CONFIG.funds.replace('/api/funds', '')}/api/fund/${fund.code}`, {
             method: 'DELETE',
           });
           if (deleteResponse.ok) {

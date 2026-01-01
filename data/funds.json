@@ -165,7 +165,7 @@
     },
     "api": {
       "backendUrl": "http://127.0.0.1:8088/api/funds",
-      "note": "Make sure backendUrl matches server.host:server.port",
+      "note": "Development: http://127.0.0.1:8088/api/funds | Production: /api/funds (auto-detected by hostname)",
       "requestTimeout": 20000,
       "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38"
     },

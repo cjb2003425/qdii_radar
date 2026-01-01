@@ -1,62 +1,68 @@
 /**
  * API Configuration
  *
- * Centralized API endpoint configuration.
- * Reads from data/funds.json to get backend URL.
+ * Determines whether to use relative or absolute URLs based on environment:
+ * - Development: Uses absolute URL (http://127.0.0.1:8088) to connect directly to backend
+ * - Production: Uses relative paths (/api/*) to leverage nginx reverse proxy
  */
 
 import { API_CONFIG as FUNDS_API_CONFIG } from '../data/funds';
 
 /**
- * Detect if running in development mode
+ * Checks if the application is running in development mode.
+ * Development mode is detected when accessed via localhost or running in Vite dev server.
  */
 function isDevelopment(): boolean {
-  return import.meta.env.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const hostname = window.location.hostname;
+
+  // Vite dev server
+  if (import.meta.env.DEV) {
+    return true;
+  }
+
+  // Localhost access
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return true;
+  }
+
+  return false;
 }
 
 /**
- * Get backend base URL from funds.json config
+ * Computes the appropriate base URL for API requests.
+ *
+ * In development: Returns the backend's absolute URL (e.g., "http://127.0.0.1:8088")
+ * In production: Returns empty string to use relative paths (e.g., "/api/funds")
  */
-function getBackendBaseUrl(): string {
-  // Extract base URL from backendUrl (e.g., "http://127.0.0.1:8000/api/funds" -> "http://127.0.0.1:8000")
-  const backendUrl = FUNDS_API_CONFIG.BACKEND_URL;
-  const urlParts = backendUrl.split('/api/'); // Split at /api/
-  const baseUrl = urlParts[0]; // Get "http://127.0.0.1:8000"
-
-  if (isDevelopment()) {
-    return baseUrl;
-  } else {
-    // In production, use relative path (nginx handles routing)
+function getBaseUrl(): string {
+  // Production: always use relative paths (nginx handles proxying)
+  if (!isDevelopment()) {
     return '';
   }
+
+  // Development: use backend URL from config
+  const backendUrl = FUNDS_API_CONFIG.BACKEND_URL;
+
+  // If config already has relative path, respect it
+  if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
+    return '';
+  }
+
+  // Extract base URL (e.g., "http://127.0.0.1:8088/api/funds" -> "http://127.0.0.1:8088")
+  const urlParts = backendUrl.split('/api/');
+  return urlParts[0];
 }
 
 /**
- * API base URLs (computed from config)
+ * API endpoint configuration
+ *
+ * Examples:
+ * - Development: "http://127.0.0.1:8088/api/funds"
+ * - Production: "/api/funds"
  */
-const baseUrl = getBackendBaseUrl();
+const baseUrl = getBaseUrl();
 
 export const API_CONFIG = {
   notifications: `${baseUrl}/api/notifications`,
   funds: `${baseUrl}/api/funds`
-};
-
-/**
- * Get API URLs (function for compatibility)
- */
-export function getApiUrls() {
-  return {
-    notifications: API_CONFIG.notifications,
-    funds: API_CONFIG.funds
-  };
-}
-
-/**
- * Initialize API configuration (async for future use)
- * Currently this is a no-op since config is loaded synchronously
- */
-export async function initApiConfig(): Promise<void> {
-  // Config is loaded synchronously from data/funds.ts
-  // This function exists for future async initialization needs
-  console.log('API Config loaded from data/funds.json:', getApiUrls());
-}
+} as const;
