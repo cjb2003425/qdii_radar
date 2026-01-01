@@ -219,7 +219,7 @@ export default function MonitoringControl() {
 
         {/* Control Section */}
         <div className="p-1.5 space-y-1.5">
-          <div className="grid grid-cols-1 gap-1">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-1">
             {/* Monitoring Toggle */}
             <div className={`relative overflow-hidden rounded-lg border transition-all duration-300 ${
               isMonitoringEnabled
@@ -229,21 +229,13 @@ export default function MonitoringControl() {
               <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-white/40 to-transparent rounded-bl-full"></div>
               <div className="relative p-1.5">
                 <div className="flex items-center justify-between">
-<<<<<<< HEAD
-                  <div className="flex items-center space-x-1.5">
-=======
                   <div className="flex items-center space-x-1">
->>>>>>> 469233e (feat: Optimize monitoring control layout for iPhone 15)
                     <div className={`p-1 sm:p-1.5 rounded-lg ${
                       isMonitoringEnabled
                         ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-md'
                         : 'bg-gray-200 text-gray-500'
                     }`}>
-<<<<<<< HEAD
-                      <svg className="w-2 h-2 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-=======
                       <svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
->>>>>>> 469233e (feat: Optimize monitoring control layout for iPhone 15)
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                       </svg>
@@ -286,21 +278,13 @@ export default function MonitoringControl() {
               <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-white/40 to-transparent rounded-bl-full"></div>
               <div className="relative p-1.5">
                 <div className="flex items-center justify-between">
-<<<<<<< HEAD
-                  <div className="flex items-center space-x-1.5">
-=======
                   <div className="flex items-center space-x-1">
->>>>>>> 469233e (feat: Optimize monitoring control layout for iPhone 15)
                     <div className={`p-1 sm:p-1.5 rounded-lg ${
                       isTradingHours
                         ? 'bg-gradient-to-br from-amber-500 to-yellow-600 text-white shadow-md'
                         : 'bg-gradient-to-br from-rose-500 to-pink-600 text-white shadow-md'
                     }`}>
-<<<<<<< HEAD
-                      <svg className="w-2 h-2 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-=======
                       <svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
->>>>>>> 469233e (feat: Optimize monitoring control layout for iPhone 15)
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
