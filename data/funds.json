@@ -159,9 +159,9 @@
   ],
   "config": {
     "server": {
-      "host": "127.0.0.1",
+      "host": "0.0.0.0",
       "port": 8088,
-      "note": "Change port here. Backend will use this port on startup."
+      "note": "Use 0.0.0.0 to allow network access (iPhone), 127.0.0.1 for localhost only"
     },
     "api": {
       "backendUrl": "http://127.0.0.1:8088/api/funds",
