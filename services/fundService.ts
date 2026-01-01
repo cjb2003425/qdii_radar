@@ -1,6 +1,7 @@
 import { FundData } from '../types/fund';
 import { getUserFunds } from './userFundService';
-import { PRESET_FUNDS, API_CONFIG, PROXY_CONFIG, REQUEST_CONFIG } from '../data/funds';
+import { PRESET_FUNDS, PROXY_CONFIG, REQUEST_CONFIG } from '../data/funds';
+import { API_CONFIG } from '../config/api';
 
 const QDII_FUNDS_BASE = PRESET_FUNDS;
 
@@ -161,9 +162,9 @@ export const fetchQDIIFunds = async (): Promise<FundData[]> => {
   // 1. Try Backend for data
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.REQUEST_TIMEOUT);
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_CONFIG.PROXY_TIMEOUT);
 
-    const backendUrl = `${API_CONFIG.BACKEND_URL}?codes=${fundCodes.join(',')}`;
+    const backendUrl = `${API_CONFIG.funds}?codes=${fundCodes.join(',')}`;
     console.log("🌐 Requesting:", backendUrl);
 
     const response = await fetch(backendUrl, {
