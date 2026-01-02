@@ -208,6 +208,11 @@ class NotificationMonitor:
                 if market_price == 0:
                     continue
 
+                # Only check premium_high if the fund has premium_high trigger enabled
+                if not self.tracker.has_premium_high_trigger(fund_code):
+                    logger.debug(f"Skipping premium_high check for {fund_code}: no trigger enabled")
+                    continue
+
                 # Check premium rate threshold
                 alert = await self.tracker.detect_premium_threshold_breach(
                     fund_code=fund_code,

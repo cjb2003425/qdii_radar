@@ -161,6 +161,32 @@ class StateTracker:
         finally:
             session.close()
 
+    def has_premium_high_trigger(self, fund_code: str) -> bool:
+        """
+        Check if a fund has premium_high trigger enabled.
+
+        Args:
+            fund_code: Fund code
+
+        Returns:
+            True if premium_high trigger is enabled, False otherwise
+        """
+        session = get_db()
+        try:
+            trigger = session.query(FundTrigger).filter(
+                FundTrigger.fund_code == fund_code,
+                FundTrigger.trigger_type == 'premium_high',
+                FundTrigger.enabled == True
+            ).first()
+
+            return trigger is not None
+
+        except Exception as e:
+            logger.error(f"Failed to check premium_high trigger for {fund_code}: {e}")
+            return False
+        finally:
+            session.close()
+
     def get_active_recipients(self) -> List[str]:
         """Get list of active email recipients."""
         session = get_db()
