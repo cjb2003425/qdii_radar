@@ -1,5 +1,5 @@
 {
-  "name": "ArbitrageRadar",
-  "description": "A financial dashboard for monitoring ETF arbitrage opportunities, premium rates, and fund valuations.",
+  "name": "Fund Monitor Pro",
+  "description": "A comprehensive fund monitoring dashboard for tracking real-time fund performance, premiums, and trading status.",
   "requestFramePermissions": []
 }

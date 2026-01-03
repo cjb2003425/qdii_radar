@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { API_CONFIG } from '../config/api';
+import React, { useState, useRef } from 'react';
 import { addUserFund, removeUserFund, getUserFunds, canAddUserFund } from '../services/userFundService';
+import { lookupFund, addFundToBackend, deleteFundFromBackend, batchDeleteFundsFromBackend } from '../services/fundApiService';
 import { FundData } from '../types/fund';
 
 interface Props {
@@ -15,9 +15,11 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isLookingUp, setIsLookingUp] = useState(false);
   const [selectedFunds, setSelectedFunds] = useState<Set<string>>(new Set());
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleAddFund = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,53 +39,36 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
     }
 
     setLoading(true);
-    
+    setIsLookingUp(true);
+
     try {
       const allPresetCodes = allFunds.map(f => f.code);
-      
+
       if (!canAddUserFund(trimmedCode, allPresetCodes)) {
         setError(`基金代码 ${trimmedCode} 已经存在，不能重复添加`);
         setLoading(false);
+        setIsLookingUp(false);
         return;
       }
-      
+
       // 从后端获取真实基金名称
-      let fundName = `自定义基金${trimmedCode}`;
-      let fundFound = false;
-      try {
-        const response = await fetch(`http://127.0.0.1:8000/api/fund/${trimmedCode}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.found && data.name) {
-            fundName = data.name;
-            fundFound = true;
-          }
-        }
-      } catch (err) {
-        console.warn('获取基金名称失败，使用默认名称:', err);
-      }
+      const lookupResult = await lookupFund(trimmedCode);
 
       // 如果基金未找到，警告用户
-      if (!fundFound) {
+      if (!lookupResult.found) {
         setError(`未找到基金代码 ${trimmedCode} 的信息。\n\n这可能是因为：\n• 基金代码不存在\n• 基金已终止或清盘\n• 基金尚未上市`);
         setLoading(false);
+        setIsLookingUp(false);
         return;
       }
 
+      const fundName = lookupResult.name;
       const newUserFund = addUserFund(trimmedCode, fundName);
 
       // 调用后端API将基金添加到funds.json
-      try {
-        const addResponse = await fetch(`http://127.0.0.1:8000/api/fund?code=${trimmedCode}&name=${encodeURIComponent(fundName)}`, {
-          method: 'POST',
-        });
-        if (addResponse.ok) {
-          console.log('Fund added to funds.json');
-        } else {
-          console.warn('Failed to add fund to funds.json, but added to localStorage');
-        }
-      } catch (err) {
-        console.warn('Failed to call backend add fund API:', err);
+      const addResult = await addFundToBackend(trimmedCode, fundName);
+      if (!addResult.success) {
+        console.warn('Failed to add fund to backend, but added to localStorage:', addResult.message);
       }
       
       // 清空输入框，但保持弹窗打开状态，允许连续添加
@@ -91,16 +76,14 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
       setSuccessMessage(`成功添加: ${fundName}`);
       setError('');
       setLoading(false);
-      
+      setIsLookingUp(false);
+
       // 触发父组件刷新数据，以立即获取新基金的NAV和限额
       onFundAdded?.(newUserFund.code, newUserFund.name);
-      
+
       // 聚焦回输入框，方便继续输入
       setTimeout(() => {
-        const input = document.querySelector('input[type="text"]') as HTMLInputElement;
-        if (input) {
-          input.focus();
-        }
+        inputRef.current?.focus();
       }, 100);
       
       // 3秒后清除成功消息
@@ -116,37 +99,20 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
         setError('添加失败，请稍后重试');
       }
       setLoading(false);
+      setIsLookingUp(false);
     }
   };
 
   const handleRemoveFund = async (fundCode: string, isUserAdded: boolean) => {
     if (window.confirm(`确定要删除基金 ${fundCode} 吗？`)) {
       // 调用后端API从funds.json和监控数据库中删除
-      let backendDeleted = false;
-      try {
-        const deleteResponse = await fetch(`http://127.0.0.1:8000/api/fund/${fundCode}`, {
-          method: 'DELETE',
-        });
-        if (deleteResponse.ok) {
-          const result = await deleteResponse.json();
-          if (result.success) {
-            backendDeleted = true;
-            console.log('✅ Fund deleted from funds.json and monitoring database');
-          } else {
-            console.warn('⚠️ Backend returned success=false:', result.message);
-          }
-        } else {
-          console.warn('⚠️ Backend DELETE failed:', deleteResponse.status, deleteResponse.statusText);
-        }
-      } catch (err) {
-        console.error('❌ Failed to call backend delete fund API:', err);
-      }
+      const deleteResult = await deleteFundFromBackend(fundCode);
 
       // 从localStorage删除（无论后端是否成功）
       removeUserFund(fundCode);
 
       // 如果后端删除失败，警告用户
-      if (!backendDeleted) {
+      if (!deleteResult.success) {
         setError(`⚠️ 基金 ${fundCode} 仅从前端删除。后端服务器可能未运行，刷新页面后基金可能重新出现。请确保后端服务运行后再删除。`);
         setTimeout(() => setError(''), 5000);
       }
@@ -178,27 +144,16 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
     if (selectedFunds.size === 0) return;
 
     if (window.confirm(`确定要删除选中的 ${selectedFunds.size} 只基金吗？`)) {
+      const fundCodes = Array.from(selectedFunds);
+
       // 从localStorage删除所有选中的基金
-      selectedFunds.forEach(fundCode => {
+      fundCodes.forEach(fundCode => {
         removeUserFund(fundCode);
         onFundRemoved?.(fundCode);
       });
 
-      // 调用后端API删除（并行执行）
-      const deletePromises = Array.from(selectedFunds).map(async (fundCode) => {
-        try {
-          const response = await fetch(`http://127.0.0.1:8000/api/fund/${fundCode}`, {
-            method: 'DELETE',
-          });
-          if (response.ok) {
-            console.log(`Deleted ${fundCode} from server`);
-          }
-        } catch (err) {
-          console.warn(`Failed to delete ${fundCode} from server:`, err);
-        }
-      });
-
-      await Promise.all(deletePromises);
+      // 调用后端API批量删除（并行执行）
+      await batchDeleteFundsFromBackend(fundCodes);
 
       setSelectedFunds(new Set());
       setIsBatchMode(false);
@@ -254,23 +209,42 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
             <h3 className="text-sm font-semibold text-gray-900 mb-2">添加新基金</h3>
 
             <form onSubmit={handleAddFund} className="space-y-2">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="输入6位基金代码"
-                  className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ea3323] focus:border-transparent text-base"
-                  maxLength={6}
-                  disabled={loading}
-                />
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="bg-[#ea3323] hover:bg-[#c42b1E] text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-400 min-h-[44px] min-w-[80px]"
-                >
-                  {loading ? '添加中...' : '添加'}
-                </button>
+              <div className="relative">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      placeholder="输入6位基金代码"
+                      className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ea3323] focus:border-transparent text-base"
+                      maxLength={6}
+                      disabled={loading}
+                    />
+                    {isLookingUp && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <svg className="animate-spin h-5 w-5 text-[#ea3323]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="bg-[#ea3323] hover:bg-[#c42b1E] text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-400 min-h-[44px] min-w-[80px] flex items-center justify-center gap-2"
+                  >
+                    {loading && (
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    )}
+                    {isLookingUp ? '查找中...' : loading ? '添加中...' : '添加'}
+                  </button>
+                </div>
               </div>
 
               {error && (
