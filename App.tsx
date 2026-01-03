@@ -36,6 +36,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [funds, setFunds] = useState<Fund[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Filter funds based on active tab
   const filteredFunds = funds.filter(fund => {
@@ -162,6 +163,22 @@ const App: React.FC = () => {
     setFunds(funds.filter(f => f.code !== code));
   };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const data = await fetchQDIIFunds();
+      const mappedFunds = data.map(mapFundDataToFund);
+      setFunds(mappedFunds);
+      console.log('✅ Fund data refreshed successfully');
+    } catch (error) {
+      console.error('❌ Failed to refresh fund data:', error);
+      // Show error to user
+      alert('刷新失败，请稍后重试');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen pb-12 selection:bg-indigo-100 selection:text-indigo-700">
       
@@ -183,9 +200,16 @@ const App: React.FC = () => {
              <p className="text-slate-400 font-medium text-xs md:text-base opacity-80 md:opacity-100">Real-time premium tracking & arbitrage dashboard</p>
           </div>
           <div className="flex gap-2 self-end md:self-auto">
-             <button className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors border border-slate-700 flex items-center gap-2">
-                <RefreshCcw size={14} className="md:w-4 md:h-4" />
-                <span>Sync</span>
+             <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className={`bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors border border-slate-700 flex items-center gap-2 ${
+                  refreshing ? 'opacity-60 cursor-not-allowed' : ''
+                }`}
+                title="刷新基金数据"
+             >
+                <RefreshCcw size={14} className={`md:w-4 md:h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                <span>{refreshing ? '刷新中...' : 'Sync'}</span>
              </button>
           </div>
         </div>

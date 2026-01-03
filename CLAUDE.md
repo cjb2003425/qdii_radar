@@ -25,79 +25,105 @@ QDII Fund Radar is a real-time Chinese fund tracking application that monitors N
 - Fund persistence via POST /api/fund endpoint
 - Global caching for AKShare data (1-hour duration)
 - Background monitoring system with asyncio and SQLite
+- Runs on port 8088 (not 8000 as README suggests)
 
 **Notification System (`notifications/`)**:
 - `models.py`: SQLite database models for triggers, config, history
 - `monitor.py`: Background monitoring loop with configurable intervals
 - `state_tracker.py`: Tracks fund data changes and triggers alerts
 - `email_service.py`: SMTP/SES email delivery with templates
-- Alert types: `premium_high` (溢价率超限), `limit_change` (限额变更)
+- Alert types: `premium_high` (溢价率超限), `premium_low` (溢价率下限), `limit_change` (限额变更)
 - Trading hours awareness: only sends alerts during 9:30-15:00 Beijing time if configured
 - Debounce mechanism: prevents duplicate alerts within configured interval
 
-**Frontend Service Layer (`services/fundService.ts`)**:
-- Backend-first data fetching with client-side fallback
-- User fund management via localStorage
-- Dynamic fund code passing to backend API
-- Data merging between backend responses and user funds
+**Frontend Service Layer**:
+- `services/fundService.ts`: Backend-first data fetching with client-side fallback, user fund management via localStorage, dynamic fund code passing to backend API, data merging between backend responses and user funds
+- `services/fundApiService.ts`: Centralized API calls with retry logic for fund operations (lookup, add, delete)
 
-**Fund Management (`components/FundManager.tsx`)**:
-- User interface for adding/removing custom funds
-- Real-time fund name resolution via backend API
-- Automatic persistence to both localStorage and funds.json
+**React Components**:
+- `components/ControlPanel.tsx`: Main monitoring control panel with toggle switches (monitor on/off, trading hours filter, check interval), system health display, market overview (NASDAQ, S&P 500, average premium, exchange-traded count)
+- `components/FundRow.tsx`: Individual fund display with monitoring toggle button (persists to database), settings button to open FundTriggerSettings modal, separate desktop (table row) and mobile (card) views
+- `components/FundManager.tsx`: Floating UI for adding/removing custom funds, real-time fund name resolution via backend API, automatic persistence to both localStorage and funds.json
+- `components/FundTriggerSettings.tsx`: Modal for configuring per-fund notification triggers (premium_high, premium_low, limit_change), trigger CRUD operations with backend API
 
-**UI Layout Patterns**:
-- `App.tsx`: Uses `max-w-3xl` container to create dashboard-like centered layout
-- `FundList.tsx`: Implements tab-based filtering (全部/纳斯达克/场内基金)
-- `MonitoringControl.tsx`: Status cards using custom grid layouts with `grid-cols-[auto_auto_auto_minmax(140px,1.5fr)_minmax(140px,1.5fr)]`
-- Responsive design: Mobile-first with `sm:` breakpoints for tablet/desktop
+**UI Architecture**:
+- `App.tsx`: Uses `max-w-6xl` container for wider layout, implements tab-based filtering (全部/纳斯达克/场内基金), separates mobile and desktop rendering to avoid HTML validation errors, handles monitoring toggle with database persistence
+- Responsive design: Mobile-first with `md:` breakpoints for tablet/desktop
 - Tailwind CSS for all styling (no separate CSS files)
 
-### Data Architecture
+### Database Schema (`data/notifications.db`)
 
-**Fund Storage**: 
-- `data/funds.json`: Master fund list with 21 preset QDII funds
-- `localStorage`: User-added custom funds
-- Backend dynamically processes both sources
-
-**Data Sources**:
-1. AKShare library: Comprehensive NAV database (cached)
-2. Eastmoney HTML scraping: Purchase limits and status
-3. Eastmoney push API: Real-time LOF fund quotes
+**Tables**:
+- `monitored_funds`: Stores individual fund monitoring toggle status (fund_code, enabled, updated_at)
+- `fund_triggers`: Per-fund notification trigger configurations (fund_code, trigger_type, threshold_value, enabled)
+- `notification_config`: System settings (monitoring_enabled, smtp_enabled, check_interval_seconds, alert_time_period)
+- `notification_history`: Alert history (fund_code, fund_name, alert_type, old_value, new_value, sent_at, recipient_email)
+- `email_recipients`: Email notification recipients
+- `fund_states`: Historical fund data snapshots
 
 ## Development Commands
 
 ### Starting the Application
 ```bash
-# Start Python backend (port 8000)
+# Start Python backend (port 8088)
 python3 server.py
 
-# Start React frontend (port 3001, uses Vite)
+# Start React frontend (port 3000, uses Vite)
 npm run dev
 
 # Build for production
 npm run build
+
+# Kill backend if needed
+lsof -ti:8088 | xargs kill -9
 ```
 
-### Backend Management
+### Backend API Testing
 ```bash
-# Kill existing backend on port 8000
-lsof -ti:8000 | xargs kill -9
-
 # Test backend health
-curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8088/health
 
-# Test specific fund data
-curl "http://127.0.0.1:8000/api/funds?codes=015299,006105"
+# Get all funds with monitoring status
+curl http://127.0.0.1:8088/api/funds
 
-# Verify exchange-traded funds
-curl -s http://127.0.0.1:8000/api/funds | python3 -c \
-  "import sys, json; funds = json.load(sys.stdin); lof = [f for f in funds if f['valuation'] > 0]; \
-  print(f\"Exchange-traded: {len(lof)} funds\"); \
-  [print(f\"{f['id']} | {f['valuation']:.4f} | {f['name']}\") for f in lof]"
+# Get specific funds
+curl "http://127.0.0.1:8088/api/funds?codes=015299,006105"
+
+# Get/Update fund monitoring status
+curl http://127.0.0.1:8088/api/notifications/monitored-funds/015299
+curl -X PUT http://127.0.0.1:8088/api/notifications/monitored-funds/015299 \
+  -H 'Content-Type: application/json' -d '{"enabled":true}'
+
+# Get monitoring status
+curl http://127.0.0.1:8088/api/notifications/monitoring/status
+
+# Get fund triggers
+curl http://127.0.0.1:8088/api/notifications/funds/015299/triggers
 ```
 
-### Debugging Fund Data Issues
+### Database Operations
+```bash
+# Access SQLite database
+sqlite3 data/notifications.db
+
+# View monitored funds
+SELECT * FROM monitored_funds ORDER BY updated_at DESC;
+
+# View triggers
+SELECT fund_code, trigger_type, threshold_value, enabled
+FROM fund_triggers
+ORDER BY fund_code, trigger_type;
+
+# View notification history
+SELECT * FROM notification_history
+ORDER BY sent_at DESC
+LIMIT 20;
+
+# View configuration
+SELECT * FROM notification_config;
+```
+
+### Debugging Fund Data
 ```bash
 # Check if fund is in ETF spot data (AKShare)
 python3 -c "import akshare as ak; df = ak.fund_etf_spot_em(); print(df[df['代码'] == '159659'])"
@@ -105,12 +131,27 @@ python3 -c "import akshare as ak; df = ak.fund_etf_spot_em(); print(df[df['代�
 # Check if fund has open-end NAV data (AKShare)
 python3 -c "import akshare as ak; print(ak.fund_open_fund_daily_em(symbol='f012870').tail())"
 
-# Verify market prefix used by Eastmoney API
+# Verify market prefix for Eastmoney API
 # Shanghai: prefix 1 | Shenzhen: prefix 0
 curl -s "https://push2.eastmoney.com/api/qt/ulist.np/get?secids=0.159659&fields=f12,f14,f2,f3"
 ```
 
 ## Critical Implementation Details
+
+### Fund Monitoring Status Persistence
+
+**Database Storage**: Individual fund monitoring toggle is stored in `monitored_funds` table, not just in React state.
+
+**API Endpoints**:
+- `GET /api/notifications/monitored-funds/{fund_code}` - Returns monitoring status
+- `PUT /api/notifications/monitored-funds/{fund_code}` - Updates monitoring status (enabled=true/false)
+
+**Frontend Integration**:
+- `App.tsx` handleToggle: Calls backend API before updating local state
+- `services/fundService.ts` mergeUserFundsWithBackendData: Must include `isMonitorEnabled` field when merging
+- `App.tsx` mapFundDataToFund: Must use `data.isMonitorEnabled` from backend (not hardcoded)
+
+**Common Pitfall**: Forgetting to include `isMonitorEnabled` in the merge function causes monitoring status to not persist across page refreshes.
 
 ### Exchange-Traded Fund Classification
 
@@ -134,7 +175,6 @@ curl -s "https://push2.eastmoney.com/api/qt/ulist.np/get?secids=0.159659&fields=
 - Fund 160213 is open-end, not exchange-traded (valuation = 0)
 - Fund 012870 is ETF联接, not exchange-traded despite "LOF" in name
 - 159xxx ETF funds require Shenzhen market prefix (0), not Shanghai (1)
-- Price/NAV columns were swapped in earlier versions - verify Column 2 shows valuation, Column 3 shows marketPrice
 
 ### NAV Data Display
 **Column Mapping** (FundRow.tsx):
@@ -142,27 +182,69 @@ curl -s "https://push2.eastmoney.com/api/qt/ulist.np/get?secids=0.159659&fields=
 - `fund.marketPrice` → 净值 column (Current NAV from Eastmoney/AKShare)
 - Premium rate only calculated when both valuation > 0 AND marketPrice > 0
 
-**Critical**: The columns were swapped in earlier versions. Ensure valuation shows in Column 2 (价格) and marketPrice in Column 3 (净值).
+**Critical**: Ensure valuation shows in Column 2 (价格) and marketPrice in Column 3 (净值).
 
-### Purchase Limit Parsing
-The system handles Chinese fund purchase limits with complex parsing logic:
-- Supports both `万元` (10,000 yuan) and `元` units
-- Handles funds with "暂停申购" status but specific daily limits
-- Examples: Fund 006105 shows "限10万" (100,000 yuan limit) despite being "暂停申购"
+### Fund Type Filtering
+**NASDAQ Tab**: Only shows funds with '纳斯达克' or '纳指' in name
+- Filter logic: `fund.name.includes('纳斯达克') || fund.name.includes('纳指')`
+- Dynamic badge count updates based on filtered results
 
-### Dynamic Fund Processing
-When users add new funds, the system:
-1. Frontend calls `/api/fund/{code}` to get real fund name from AKShare
-2. Frontend calls `POST /api/fund?code={code}&name={name}` to persist to funds.json
-3. Backend reloads fund list using `reload_funds()` from funds_loader.py
-4. Frontend triggers immediate data refresh via `onFundAdded` callback
+**Exchange-Traded Tab**: Only shows funds with `valuation > 0`
+- These funds have real-time trading prices
+- LOF and ETF funds
 
-### Caching Strategy
-- **AKShare Cache**: Global cache with 1-hour expiration, shared across all requests
-- **Cache Invalidation**: Automatically refreshes when expired or on server restart
-- **Performance**: Critical for handling multiple fund requests without overwhelming AKShare API
+### Fund Deletion Behavior
 
-## Data Structure
+**FundManager Deletion**: Temporary, UI-only, removes from localStorage
+**FundList Deletion**: Permanent, calls backend DELETE API, removes from funds.json
+- App.tsx handleDelete: Always calls `DELETE /api/fund/{code}` before removing from state
+- Includes confirmation dialog with fund details
+- Database also removes fund from `monitored_funds` table
+
+### URL Construction in API Services
+
+**Critical Bug Pattern**: `API_CONFIG.funds` is `http://127.0.0.1:8088/api/funds`, so `${API_CONFIG.funds}/fund/${code}` becomes `http://127.0.0.1:8088/api/funds/fund/161129` (WRONG)
+
+**Correct Pattern**:
+```typescript
+const baseUrl = API_CONFIG.funds.replace('/api/funds', '/api');
+const url = `${baseUrl}/fund/${code}`;  // → http://127.0.0.1:8088/api/fund/161129
+```
+
+This pattern is used in `services/fundApiService.ts` for lookup and add operations.
+
+### HTML Structure Validation
+
+**Critical**: `<div>` (mobile cards) cannot be direct child of `<tbody>`
+
+**Solution**: Separate mobile and desktop rendering in App.tsx:
+```typescript
+{/* Mobile Cards - OUTSIDE table */}
+<div className="md:hidden flex flex-col gap-3 p-3 bg-slate-50">
+  {filteredFunds.map((fund) => (
+    <FundRow key={`mobile-${fund.id}`} fund={fund} />
+  ))}
+</div>
+
+{/* Desktop Table */}
+<div className="hidden md:block">
+  <table>
+    <tbody>
+      {filteredFunds.map((fund) => (
+        <FundRow key={`desktop-${fund.id}`} fund={fund} />
+      ))}
+    </tbody>
+  </table>
+</div>
+```
+
+### React Component Imports
+
+**FundTriggerSettings**: Uses default export, not named export
+- ✅ `import FundTriggerSettings from './FundTriggerSettings';`
+- ❌ `import { FundTriggerSettings } from './FundTriggerSettings';`
+
+## Data Structures
 
 ### FundData Type
 ```typescript
@@ -177,10 +259,12 @@ When users add new funds, the system:
   marketPriceRate: number; // NAV daily change %
   limitText: string;    // Formatted purchase limit text
   isWatchlisted: boolean;
-  monitoringEnabled?: boolean; // Per-fund monitoring toggle
+  isMonitorEnabled?: boolean;  // Monitoring status from database (CRITICAL: persists to DB)
   isUserAdded?: boolean; // User-added vs preset fund
 }
 ```
+
+**Critical Field**: `isMonitorEnabled` - Must be included in all data merging operations or monitoring status won't persist.
 
 **Critical Distinctions**:
 - `valuation > 0` → Fund is exchange-traded (LOF or ETF) with real-time trading price
@@ -192,3 +276,4 @@ When users add new funds, the system:
 - Exchange-traded funds also have `valuation` (trading price) from Eastmoney API
 - Purchase limits formatted as Chinese text: "限10万", "暂停", "不限"
 - Price validation: unreliable prices (>50% diff from NAV) are reset to 0
+- **Always includes** `isMonitorEnabled` field for each fund
