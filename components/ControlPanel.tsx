@@ -405,15 +405,29 @@ export const ControlPanel: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <div className="flex flex-col overflow-hidden">
               <span className="text-[9px] font-semibold text-slate-400 mb-0.5">纳斯达克</span>
-              <span className="text-base font-bold leading-none tracking-tight text-emerald-600">
-                {marketData ? marketData.nasdaq.value.toLocaleString('en-US', {maximumFractionDigits: 0}) : '...'}
-              </span>
+              <div className="flex items-baseline gap-1">
+                <span className="text-base font-bold leading-none tracking-tight text-emerald-600">
+                  {marketData ? marketData.nasdaq.value.toLocaleString('en-US', {maximumFractionDigits: 0}) : '...'}
+                </span>
+                {marketData && marketData.nasdaq.change !== 0 && (
+                  <span className={`text-xs font-medium ${marketData.nasdaq.change > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                    {marketData.nasdaq.change > 0 ? '+' : ''}{marketData.nasdaq.change.toFixed(2)}%
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex flex-col overflow-hidden">
               <span className="text-[9px] font-semibold text-slate-400 mb-0.5">标普500</span>
-              <span className="text-base font-bold leading-none tracking-tight text-blue-600">
-                {marketData ? marketData.sp500.value.toLocaleString('en-US', {maximumFractionDigits: 0}) : '...'}
-              </span>
+              <div className="flex items-baseline gap-1">
+                <span className="text-base font-bold leading-none tracking-tight text-blue-600">
+                  {marketData ? marketData.sp500.value.toLocaleString('en-US', {maximumFractionDigits: 0}) : '...'}
+                </span>
+                {marketData && marketData.sp500.change !== 0 && (
+                  <span className={`text-xs font-medium ${marketData.sp500.change > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                    {marketData.sp500.change > 0 ? '+' : ''}{marketData.sp500.change.toFixed(2)}%
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex flex-col overflow-hidden">
               <span className="text-[9px] font-semibold text-slate-400 mb-0.5">平均溢价</span>

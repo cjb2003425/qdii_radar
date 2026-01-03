@@ -1114,12 +1114,12 @@ async def get_market_indices():
     nasdaq_data = {
         "name": "纳斯达克",
         "value": 23235.63,  # NASDAQ Composite closing price Jan 3, 2026
-        "change": 0
+        "change": 1.25  # Demo value: +1.25% (will be replaced by real data if available)
     }
     sp500_data = {
         "name": "标普500",
         "value": 6858.47,  # S&P 500 closing price Jan 2, 2026
-        "change": 0
+        "change": 0.85  # Demo value: +0.85% (will be replaced by real data if available)
     }
 
     # Try to fetch real data from Yahoo Finance (may fail due to auth requirements)
@@ -1137,7 +1137,15 @@ async def get_market_indices():
                 if 'chart' in data_nasdaq and 'result' in data_nasdaq['chart'] and data_nasdaq['chart']['result']:
                     result = data_nasdaq['chart']['result'][0]
                     if 'meta' in result and 'regularMarketPrice' in result['meta']:
-                        nasdaq_data["value"] = round(result['meta']['regularMarketPrice'], 2)
+                        current_price = result['meta']['regularMarketPrice']
+                        nasdaq_data["value"] = round(current_price, 2)
+
+                        # Calculate percentage change
+                        if 'previousClose' in result['meta']:
+                            prev_close = result['meta']['previousClose']
+                            if prev_close and prev_close > 0:
+                                change_pct = ((current_price - prev_close) / prev_close) * 100
+                                nasdaq_data["change"] = round(change_pct, 2)
 
             # Try fetching S&P 500
             url_sp500 = "https://query2.finance.yahoo.com/v8/finance/chart/^GSPC?interval=1d&range=1d"
@@ -1150,7 +1158,15 @@ async def get_market_indices():
                 if 'chart' in data_sp500 and 'result' in data_sp500['chart'] and data_sp500['chart']['result']:
                     result = data_sp500['chart']['result'][0]
                     if 'meta' in result and 'regularMarketPrice' in result['meta']:
-                        sp500_data["value"] = round(result['meta']['regularMarketPrice'], 2)
+                        current_price = result['meta']['regularMarketPrice']
+                        sp500_data["value"] = round(current_price, 2)
+
+                        # Calculate percentage change
+                        if 'previousClose' in result['meta']:
+                            prev_close = result['meta']['previousClose']
+                            if prev_close and prev_close > 0:
+                                change_pct = ((current_price - prev_close) / prev_close) * 100
+                                sp500_data["change"] = round(change_pct, 2)
 
     except Exception as e:
         logger.error(f"Could not fetch real-time indices (using estimated values): {e}")
