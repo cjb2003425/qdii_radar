@@ -1114,12 +1114,12 @@ async def get_market_indices():
     nasdaq_data = {
         "name": "纳斯达克",
         "value": 23235.63,  # NASDAQ Composite closing price Jan 3, 2026
-        "change": 1.25  # Demo value: +1.25% (will be replaced by real data if available)
+        "change": 0.35  # Demo value: +0.35% (will be replaced by real data if available)
     }
     sp500_data = {
         "name": "标普500",
         "value": 6858.47,  # S&P 500 closing price Jan 2, 2026
-        "change": 0.85  # Demo value: +0.85% (will be replaced by real data if available)
+        "change": 0.28  # Demo value: +0.28% (will be replaced by real data if available)
     }
 
     # Try to fetch real data from Yahoo Finance (may fail due to auth requirements)
