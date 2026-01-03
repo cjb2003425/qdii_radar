@@ -16,5 +16,6 @@ export interface FundData {
   limitText: string;
   isWatchlisted: boolean;
   isUserAdded?: boolean;
-  monitoringEnabled?: boolean;  // New field for notification checkbox
+  isMonitorEnabled?: boolean;  // Monitoring status from backend database
+  monitoringEnabled?: boolean;  // Deprecated: use isMonitorEnabled instead
 }

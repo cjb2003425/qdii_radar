@@ -1,148 +1,207 @@
 import React, { useState } from 'react';
-import { FundData } from '../types/fund';
-import { getRateColorClass, formatRate } from '../utils/format';
+import { Fund } from '../types';
+import { Settings, X } from 'lucide-react';
 import FundTriggerSettings from './FundTriggerSettings';
+import { FundData } from '../types/fund';
 
-interface Props {
-  fund: FundData;
+interface FundRowProps {
+  fund: Fund;
+  onDelete: (id: string) => void;
   onToggle: (id: string) => void;
-  onDelete?: (id: string) => void;
-  onToggleMonitoring?: (id: string, enabled: boolean) => void;
-  onTriggerChange?: () => void;
 }
 
-const FundRow: React.FC<Props> = ({ fund, onToggle, onDelete, onToggleMonitoring, onTriggerChange }) => {
-  const isLimitRestricted = fund.limitText && (fund.limitText.includes('暂停') || fund.limitText.includes('限'));
+const getLimitBadgeStyle = (status: string) => {
+  switch (status) {
+    case 'warning': return 'bg-orange-50 text-orange-600 border-orange-100';
+    case 'danger': return 'bg-red-50 text-red-600 border-red-100';
+    case 'neutral': return 'bg-slate-100 text-slate-600 border-slate-200';
+    default: return 'bg-slate-50 text-slate-500 border-slate-200';
+  }
+};
+
+const formatPercent = (val: number) => {
+  const sign = val > 0 ? '+' : '';
+  return `${sign}${val.toFixed(2)}%`;
+};
+
+const getColor = (val: number) => {
+  if (val > 0) return 'text-up';
+  if (val < 0) return 'text-down';
+  return 'text-slate-500';
+};
+
+const getBgColor = (val: number) => {
+  if (val > 0) return 'bg-red-50';
+  if (val < 0) return 'bg-green-50';
+  return 'bg-slate-50';
+}
+
+export const FundRow: React.FC<FundRowProps> = ({ fund, onDelete, onToggle }) => {
   const [showTriggerSettings, setShowTriggerSettings] = useState(false);
 
-  // Debug: Log when monitoring state changes
-  React.useEffect(() => {
-    if (fund.monitoringEnabled) {
-      console.log(`✅ Settings icon should be visible for fund ${fund.code} (${fund.name})`);
-    }
-  }, [fund.monitoringEnabled, fund.code, fund.name]);
+  // Convert Fund to FundData format for FundTriggerSettings
+  const fundData: FundData = {
+    id: fund.code,
+    code: fund.code,
+    name: fund.name,
+    valuation: fund.price,
+    valuationRate: fund.priceChangePercent,
+    marketPrice: fund.netValue,
+    marketPriceRate: fund.netValueChangePercent,
+    premiumRate: fund.premiumRate,
+    limitText: fund.limitTag || '—',
+    isWatchlisted: false,
+  };
 
   return (
     <>
-      <div className="flex items-center py-2.5 px-2 bg-white border-b border-gray-100 text-sm hover:bg-gray-50 transition-colors">
-        {/* Column 1: Name & Code */}
-        <div className="w-[24%] sm:w-[25%] flex flex-col justify-center overflow-hidden">
-          <div className="flex items-center gap-1">
-            <span className="text-[#2c68a8] font-medium text-[13px] sm:text-[15px] leading-tight truncate" title={fund.name}>{fund.name}</span>
-            {onDelete && (
+      {/* Trigger Settings Modal */}
+      {showTriggerSettings && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+            <FundTriggerSettings
+              fund={fundData}
+              onClose={() => setShowTriggerSettings(false)}
+            />
+          </div>
+        </div>
+      )}
+      {/* Desktop View (Table Row) */}
+      <tr className="hidden md:table-row border-b border-slate-50 hover:bg-slate-50/80 transition-colors group last:border-0">
+        <td className="py-2.5 px-4 align-middle">
+          <div className="flex items-center gap-3">
+            <div className={`w-1 h-8 rounded-full ${fund.isMonitorEnabled ? 'bg-indigo-500' : 'bg-slate-200'}`}></div>
+            <div className="max-w-[220px]">
+              <div className="font-semibold text-slate-700 text-[14px] truncate cursor-pointer hover:text-indigo-600 transition-colors" title={fund.name}>
+                {fund.name}
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{fund.code}</span>
+                {fund.limitTag && (
+                  <span className={`px-1.5 py-0.5 rounded-[4px] text-[10px] font-medium border ${getLimitBadgeStyle(fund.limitStatus)}`}>
+                    {fund.limitTag}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </td>
+        <td className="py-2.5 px-4 align-middle">
+          <div className="flex flex-col">
+            <span className="font-bold text-slate-700 font-mono tracking-tight tabular-nums text-[14px]">{fund.price.toFixed(4)}</span>
+            <span className={`text-[11px] font-semibold font-mono tabular-nums mt-0.5 ${getColor(fund.priceChangePercent)}`}>
+              {formatPercent(fund.priceChangePercent)}
+            </span>
+          </div>
+        </td>
+        <td className="py-2.5 px-4 align-middle">
+          <div className="flex flex-col">
+            <span className="font-medium text-slate-600 font-mono tracking-tight tabular-nums text-[14px]">{fund.netValue.toFixed(4)}</span>
+            <span className={`text-[11px] font-medium font-mono tabular-nums mt-0.5 ${getColor(fund.netValueChangePercent)}`}>
+              {formatPercent(fund.netValueChangePercent)}
+            </span>
+          </div>
+        </td>
+        <td className="py-2.5 px-4 align-middle">
+          <div className={`inline-flex items-center px-2 py-0.5 rounded-md text-[13px] font-bold font-mono tabular-nums ${getBgColor(fund.premiumRate)} ${getColor(fund.premiumRate)}`}>
+            {formatPercent(fund.premiumRate)}
+          </div>
+        </td>
+        <td className="py-2.5 px-4 align-middle">
+          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+             <button 
+              onClick={() => onToggle(fund.id)}
+              className={`p-1.5 rounded-full hover:bg-slate-100 transition-colors ${fund.isMonitorEnabled ? 'text-indigo-600' : 'text-slate-400'}`}
+              title="Toggle Monitor"
+            >
+              <div className={`w-2.5 h-2.5 rounded-full ${fund.isMonitorEnabled ? 'bg-indigo-600' : 'bg-slate-300'}`}></div>
+            </button>
+            {fund.hasSettings && (
               <button
-                onClick={() => onDelete(fund.id)}
-                className="text-red-500 hover:text-red-700 text-xs ml-1 min-w-[20px] min-h-[20px] flex items-center justify-center"
-                title="删除此基金"
+                onClick={() => setShowTriggerSettings(true)}
+                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+                title="触发器设置"
               >
-                ✕
+                <Settings size={16} />
               </button>
             )}
+            <button 
+              onClick={() => onDelete(fund.id)}
+              className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+            >
+              <X size={16} />
+            </button>
           </div>
-          <span className="text-[#2c68a8] text-[10px] sm:text-xs mt-0.5">{fund.code}</span>
-        </div>
+        </td>
+      </tr>
 
-        {/* Column 2: Price (场内价格 for LOF funds, or previous close NAV for regular funds) */}
-        <div className="w-[13.5%] sm:w-[16%] flex flex-col items-center justify-center text-center">
-          {fund.valuation > 0 ? (
-            <>
-              <span className="text-gray-900 text-[13px] sm:text-[15px] font-medium leading-tight">{fund.valuation.toFixed(4)}</span>
-              <span className={`${getRateColorClass(fund.valuationRate)} text-[11px] sm:text-xs mt-0.5 font-medium`}>
-                {formatRate(fund.valuationRate, true)}
-              </span>
-            </>
-          ) : (
-            <span className="text-gray-400 text-xs sm:text-sm">—</span>
-          )}
-        </div>
+      {/* Mobile View (Compact Card) */}
+      <div className="md:hidden bg-white rounded-xl p-3 border border-slate-100 shadow-sm relative overflow-hidden">
+        {/* Status Bar */}
+        <div className={`absolute left-0 top-0 bottom-0 w-1 ${fund.isMonitorEnabled ? 'bg-indigo-500' : 'bg-slate-200'}`}></div>
+        
+        <div className="pl-2.5 flex flex-col gap-2.5">
+            {/* Header: Name, Code, Tags, Toggle */}
+            <div className="flex justify-between items-start">
+                <div className="min-w-0 pr-2 flex-1">
+                     <div className="font-bold text-slate-800 text-[14px] leading-tight truncate">{fund.name}</div>
+                     <div className="flex items-center flex-wrap gap-2 mt-1.5">
+                        <span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-1 rounded border border-slate-100">{fund.code}</span>
+                        {fund.limitTag && (
+                          <span className={`px-1 py-[1px] rounded-[3px] text-[9px] leading-none font-medium border ${getLimitBadgeStyle(fund.limitStatus)}`}>
+                            {fund.limitTag}
+                          </span>
+                        )}
+                     </div>
+                </div>
+                {/* Compact Controls */}
+                <div className="flex items-center gap-3 flex-shrink-0 pt-0.5">
+                    {fund.hasSettings && (
+                      <button
+                        onClick={() => setShowTriggerSettings(true)}
+                        className="text-slate-300 active:text-indigo-500"
+                        title="触发器设置"
+                      >
+                        <Settings size={16} />
+                      </button>
+                    )}
+                    <button 
+                        onClick={() => onToggle(fund.id)}
+                        className={`w-8 h-5 rounded-full p-0.5 transition-colors duration-200 ease-in-out relative ${fund.isMonitorEnabled ? 'bg-indigo-500' : 'bg-slate-200'}`}
+                    >
+                        <div className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ${fund.isMonitorEnabled ? 'translate-x-3' : 'translate-x-0'}`}></div>
+                    </button>
+                </div>
+            </div>
 
-        {/* Column 3: NAV (最新净值) */}
-        <div className="w-[13.5%] sm:w-[16%] flex flex-col items-center justify-center text-center">
-          {fund.marketPrice > 0 ? (
-            <>
-              <span className="text-gray-900 text-[13px] sm:text-[15px] font-medium leading-tight">{fund.marketPrice.toFixed(4)}</span>
-              <span className={`${getRateColorClass(fund.marketPriceRate)} text-[11px] sm:text-xs mt-0.5 font-medium`}>
-                {formatRate(fund.marketPriceRate, true)}
-              </span>
-            </>
-          ) : (
-            <span className="text-gray-400 text-xs sm:text-sm">—</span>
-          )}
-        </div>
+            {/* Compact Data Grid */}
+            <div className="grid grid-cols-3 gap-2 bg-slate-50/50 rounded-lg p-2 border border-slate-50">
+                 {/* Price */}
+                 <div className="flex flex-col">
+                    <span className="text-[9px] text-slate-400 scale-95 origin-left mb-0.5">现价</span>
+                    <div className="flex flex-col leading-none">
+                        <span className="font-bold text-slate-700 font-mono text-[13px]">{fund.price.toFixed(4)}</span>
+                        <span className={`text-[10px] font-bold mt-1 ${getColor(fund.priceChangePercent)}`}>{formatPercent(fund.priceChangePercent)}</span>
+                    </div>
+                 </div>
+                 
+                 {/* Net Value */}
+                 <div className="flex flex-col pl-2 border-l border-slate-100">
+                    <span className="text-[9px] text-slate-400 scale-95 origin-left mb-0.5">净值</span>
+                    <div className="flex flex-col leading-none">
+                        <span className="font-medium text-slate-600 font-mono text-[13px]">{fund.netValue.toFixed(4)}</span>
+                        <span className={`text-[10px] font-medium mt-1 ${getColor(fund.netValueChangePercent)}`}>{formatPercent(fund.netValueChangePercent)}</span>
+                    </div>
+                 </div>
 
-        {/* Column 4: Premium Rate */}
-        <div className="w-[13%] sm:w-[16%] flex flex-col items-center justify-center text-center">
-          {(fund.valuation > 0 && fund.marketPrice > 0) ? (
-            <span className={`${getRateColorClass(fund.premiumRate)} text-[13px] sm:text-[15px] font-medium leading-tight`}>
-              {formatRate(fund.premiumRate, true)}
-            </span>
-          ) : (
-            <span className="text-gray-400 text-xs sm:text-sm">—</span>
-          )}
-        </div>
-
-        {/* Column 5: Purchase Limit */}
-        <div className="w-[13%] sm:w-[16%] flex items-center justify-center text-center">
-          {fund.limitText ? (
-            <span className={`text-[10px] sm:text-xs px-1 sm:px-1.5 py-0.5 rounded ${
-              fund.limitText.includes('暂停')
-                ? 'text-red-600 bg-red-50'
-                : fund.limitText.includes('限')
-                  ? 'text-orange-600 bg-orange-50'
-                  : 'text-gray-500'
-            }`}>
-              {fund.limitText}
-            </span>
-          ) : (
-            <span className="text-gray-400 text-xs">-</span>
-          )}
-        </div>
-
-        {/* Column 6: Monitoring Toggle Switch & Settings */}
-        <div className="w-[23%] sm:w-[11%] flex items-center justify-center gap-0.5 flex-shrink-0">
-          {onToggleMonitoring && (
-            <>
-              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={fund.monitoringEnabled || false}
-                  onChange={(e) => onToggleMonitoring(fund.id, e.target.checked)}
-                />
-                <div className="w-9 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-              {fund.monitoringEnabled && (
-                <button
-                  onClick={() => {
-                    console.log(`🔧 Settings button clicked for ${fund.code}`);
-                    setShowTriggerSettings(!showTriggerSettings);
-                  }}
-                  className="text-blue-600 hover:text-blue-800 hover:bg-blue-100 active:bg-blue-200 rounded-lg flex items-center justify-center transition-all flex-shrink-0"
-                  style={{ width: '38px', height: '44px' }}
-                  title="配置触发器"
-                  aria-label="配置触发器"
-                >
-                  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </button>
-              )}
-            </>
-          )}
+                 {/* Premium */}
+                 <div className="flex flex-col items-end pl-2 border-l border-slate-100">
+                    <span className="text-[9px] text-slate-400 scale-95 origin-right mb-0.5">溢价率</span>
+                     <div className={`font-bold font-mono text-[13px] mt-0.5 ${getColor(fund.premiumRate)}`}>{formatPercent(fund.premiumRate)}</div>
+                 </div>
+            </div>
         </div>
       </div>
-
-      {/* Trigger Settings Panel */}
-      {showTriggerSettings && (
-        <FundTriggerSettings
-          fund={fund}
-          onTriggerChange={onTriggerChange}
-          onClose={() => setShowTriggerSettings(false)}
-        />
-      )}
     </>
   );
 };
-
-export default FundRow;

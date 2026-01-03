@@ -216,6 +216,7 @@ function mergeUserFundsWithBackendData(userFunds: ReturnType<typeof getUserFunds
         marketPriceRate: backendFund.marketPriceRate,
         limitText: backendFund.limitText,
         isWatchlisted: false,
+        isMonitorEnabled: backendFund.isMonitorEnabled || false,
         isUserAdded: true
       };
     } else {
@@ -232,6 +233,7 @@ function mergeUserFundsWithBackendData(userFunds: ReturnType<typeof getUserFunds
         marketPriceRate: 0,
         limitText: '—',
         isWatchlisted: false,
+        isMonitorEnabled: false,
         isUserAdded: true
       };
     }

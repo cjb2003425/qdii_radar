@@ -1,241 +1,312 @@
 import React, { useState, useEffect } from 'react';
-import FundList from './components/FundList';
+import { ControlPanel } from './components/ControlPanel';
+import { FundRow } from './components/FundRow';
 import FundManager from './components/FundManager';
-import HeadlineStats from './components/HeadlineStats';
-import NavBar from './components/NavBar';
-import MonitoringControl from './components/MonitoringControl';
-import Footer from './components/Footer';
-import { FundData } from './types/fund';
+import { Fund } from './types';
 import { fetchQDIIFunds } from './services/fundService';
-import { initializeFunds, removeUserFund } from './services/userFundService';
-import { API_CONFIG } from './config/api';
+import { initializeFunds } from './services/userFundService';
+import { FundData } from './types/fund';
+import { ArrowDown, RefreshCcw, LayoutDashboard } from 'lucide-react';
+
+// Map FundData (from backend) to Fund (new UI format)
+const mapFundDataToFund = (data: FundData): Fund => {
+  const getLimitStatus = (text: string): Fund['limitStatus'] => {
+    if (text.includes('暂停')) return 'danger';
+    if (text.includes('限')) return text.includes('万') && parseInt(text) < 10 ? 'warning' : 'neutral';
+    return 'info';
+  };
+
+  return {
+    id: data.id,
+    code: data.code,
+    name: data.name,
+    price: data.valuation || 0,
+    priceChangePercent: data.valuationRate || 0,
+    netValue: data.marketPrice || 0,
+    netValueChangePercent: data.marketPriceRate || 0,
+    premiumRate: data.premiumRate || 0,
+    limitTag: data.limitText !== '—' ? data.limitText : undefined,
+    limitStatus: getLimitStatus(data.limitText),
+    isMonitorEnabled: data.isMonitorEnabled || false,
+    hasSettings: true,
+  };
+};
 
 const App: React.FC = () => {
-  const [funds, setFunds] = useState<FundData[]>([]);
+  const [activeTab, setActiveTab] = useState('all');
+  const [funds, setFunds] = useState<Fund[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState<string>('all');
 
-  // localStorage key for monitoring preferences
-  const MONITORING_STORAGE_KEY = 'qdii_fund_monitoring';
+  // Filter funds based on active tab
+  const filteredFunds = funds.filter(fund => {
+    if (activeTab === 'all') return true;
+    if (activeTab === 'nasdaq') {
+      return fund.name.includes('纳斯达克') || fund.name.includes('纳指');
+    }
+    if (activeTab === 'exchange') {
+      return fund.price > 0; // Has trading price = exchange-traded
+    }
+    return true;
+  });
+
+  // Calculate counts
+  const nasdaqCount = funds.filter(f => f.name.includes('纳斯达克') || f.name.includes('纳指')).length;
+  const exchangeCount = funds.filter(f => f.price > 0).length;
 
   useEffect(() => {
     const loadFunds = async () => {
-      setLoading(true);
       try {
-        // 初始化预设基金（仅第一次）
+        // Initialize preset funds
         initializeFunds();
 
         const data = await fetchQDIIFunds();
-
-        // Load monitoring preferences from localStorage
-        let monitoringPrefs = loadMonitoringPreferences();
-
-        // Sync with backend to get the latest monitored funds
-        try {
-          const response = await fetch(`${API_CONFIG.notifications}/monitored-funds`);
-          if (response.ok) {
-            const monitoredFunds = await response.json();
-            // Update localStorage to match backend
-            const syncedPrefs: Record<string, boolean> = {};
-            data.forEach(fund => {
-              syncedPrefs[fund.id] = monitoredFunds.includes(fund.id);
-            });
-            monitoringPrefs = syncedPrefs;
-            saveMonitoringPreferences(syncedPrefs);
-          }
-        } catch (error) {
-          console.error("Failed to sync monitoring state:", error);
-        }
-
-        // Merge monitoring preferences with fund data
-        const fundsWithMonitoring = data.map(fund => ({
-          ...fund,
-          monitoringEnabled: monitoringPrefs[fund.id] || false
-        }));
-
-        setFunds(fundsWithMonitoring);
+        const mappedFunds = data.map(mapFundDataToFund);
+        setFunds(mappedFunds);
       } catch (error) {
-        console.error("Failed to fetch funds", error);
+        console.error('Failed to load funds:', error);
       } finally {
         setLoading(false);
       }
     };
-
     loadFunds();
   }, []);
 
-  const loadMonitoringPreferences = (): Record<string, boolean> => {
-    try {
-      const stored = localStorage.getItem(MONITORING_STORAGE_KEY);
-      return stored ? JSON.parse(stored) : {};
-    } catch {
-      return {};
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-slate-600">加载中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const handleDelete = async (id: string) => {
+    // Find the fund to get its code
+    const fundToDelete = funds.find(f => f.id === id);
+    if (!fundToDelete) return;
+
+    // Confirm before deleting
+    if (!window.confirm(`确定要删除基金 ${fundToDelete.code} (${fundToDelete.name}) 吗？`)) {
+      return;
     }
-  };
 
-  const saveMonitoringPreferences = (prefs: Record<string, boolean>) => {
     try {
-      localStorage.setItem(MONITORING_STORAGE_KEY, JSON.stringify(prefs));
-    } catch (error) {
-      console.error("Failed to save monitoring preferences", error);
-    }
-  };
-
-  const handleToggle = (id: string) => {
-    setFunds(prev => prev.map(f =>
-      f.id === id ? { ...f, isWatchlisted: !f.isWatchlisted } : f
-    ));
-  };
-
-  const handleToggleMonitoring = async (id: string, enabled: boolean) => {
-    // Update the fund's monitoring state
-    setFunds(prev => prev.map(f =>
-      f.id === id ? { ...f, monitoringEnabled: enabled } : f
-    ));
-
-    // Save to localStorage
-    const prefs = loadMonitoringPreferences();
-    prefs[id] = enabled;
-    saveMonitoringPreferences(prefs);
-
-    // Sync to backend
-    try {
-      const monitoredFunds = Object.keys(prefs).filter(code => prefs[code]);
-      await fetch(`${API_CONFIG.notifications}/monitored-funds`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ funds: monitoredFunds })
+      // Call backend API to delete the fund (from funds.json and monitoring database)
+      const baseUrl = 'http://127.0.0.1:8088/api'; // TODO: Use API_CONFIG
+      const response = await fetch(`${baseUrl}/fund/${fundToDelete.code}`, {
+        method: 'DELETE',
       });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          console.log(`✅ Fund ${fundToDelete.code} deleted from backend`);
+        } else {
+          console.warn(`⚠️ Backend returned success=false: ${result.message}`);
+        }
+      } else {
+        console.warn(`⚠️ Backend DELETE failed: ${response.status}`);
+      }
     } catch (error) {
-      console.error("Failed to sync monitoring preferences to backend:", error);
+      console.error('❌ Failed to delete fund from backend:', error);
+      // Still remove from UI even if backend fails
     }
+
+    // Remove from local state
+    setFunds(funds.filter(f => f.id !== id));
   };
 
-  // Calculate page counts
-  // Exchange-traded funds: funds with real-time trading prices (valuation > 0)
-  const lofCount = funds.filter(f => f.valuation > 0).length;
-  const allCount = funds.length;
-  const nasdaqCount = funds.filter(f => f.name.includes('纳指') || f.name.includes('纳斯达克')).length;
+  const handleToggle = async (id: string) => {
+    const fundToToggle = funds.find(f => f.id === id);
+    if (!fundToToggle) return;
 
-  const pages = [
-    { id: 'all', label: '全部基金', count: allCount },
-    { id: 'nasdaq', label: '纳斯达克', count: nasdaqCount },
-    { id: 'lof', label: '场内基金', count: lofCount },
-  ];
+    const newEnabledState = !fundToToggle.isMonitorEnabled;
 
-  const handlePageChange = (pageId: string) => {
-    setCurrentPage(pageId);
+    try {
+      // Call backend API to persist the change
+      const baseUrl = 'http://127.0.0.1:8088/api/notifications';
+      const response = await fetch(`${baseUrl}/monitored-funds/${fundToToggle.code}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: newEnabledState })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`✅ Fund ${fundToToggle.code} monitoring ${newEnabledState ? 'enabled' : 'disabled'}`);
+      } else {
+        console.error(`❌ Failed to update monitoring status: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to update fund monitoring in backend:', error);
+    }
+
+    // Update local state
+    setFunds(funds.map(f => f.id === id ? { ...f, isMonitorEnabled: newEnabledState } : f));
   };
 
-  const handleFundAdded = (code: string, name: string) => {
-    // Reload funds when a new fund is added
-    loadFunds();
+  const handleFundAdded = async (code: string, name: string) => {
+    // Refresh fund data from backend after adding
+    try {
+      const data = await fetchQDIIFunds();
+      const mappedFunds = data.map(mapFundDataToFund);
+      setFunds(mappedFunds);
+    } catch (error) {
+      console.error('Failed to refresh funds after adding:', error);
+    }
   };
 
   const handleFundRemoved = (code: string) => {
-    // Always reload funds, regardless of whether it was a user fund or preset fund
-    loadFunds();
-  };
-
-  const handleDeleteFund = async (id: string) => {
-    // Find fund by id and remove directly from both localStorage and display
-    const fund = funds.find(f => f.id === id);
-    if (fund) {
-      // Show confirmation dialog
-      if (window.confirm(`确定要删除基金 "${fund.name}" (${fund.code}) 吗？`)) {
-        // Call backend API to delete from funds.json and monitoring database
-        let backendDeleted = false;
-        try {
-          const deleteResponse = await fetch(`${API_CONFIG.funds.replace('/api/funds', '')}/api/fund/${fund.code}`, {
-            method: 'DELETE',
-          });
-          if (deleteResponse.ok) {
-            const result = await deleteResponse.json();
-            if (result.success) {
-              backendDeleted = true;
-              console.log(`✅ Fund ${fund.code} deleted from funds.json and monitoring database`);
-            } else {
-              console.warn(`⚠️ Backend returned success=false for ${fund.code}:`, result.message);
-            }
-          } else {
-            console.warn(`⚠️ Backend DELETE failed for ${fund.code}:`, deleteResponse.status, deleteResponse.statusText);
-          }
-        } catch (err) {
-          console.error(`❌ Failed to call backend delete fund API for ${fund.code}:`, err);
-        }
-
-        // Remove from localStorage (regardless of backend success)
-        removeUserFund(fund.code);
-
-        // Update display immediately by filtering out the deleted fund
-        setFunds(prev => prev.filter(f => f.id !== id));
-
-        // Warn user if backend deletion failed
-        if (!backendDeleted) {
-          console.warn(`⚠️ Fund ${fund.code} only removed from frontend. Backend server may not be running. Fund may reappear on refresh.`);
-        }
-      }
-    }
-  };
-
-  const loadFunds = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchQDIIFunds();
-      setFunds(data);
-    } catch (error) {
-      console.error("Failed to fetch funds", error);
-    } finally {
-      setLoading(false);
-    }
+    setFunds(funds.filter(f => f.code !== code));
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center w-full">
-      {/*
-        Responsive Container:
-        - w-full for mobile
-        - max-w-3xl for tablet/desktop to resemble a dashboard
-        - shadow for better aesthetics on desktop
-        - safe-area-all for iPhone 15 notch support
-      */}
-      <div className="w-full max-w-3xl bg-white min-h-screen shadow-xl relative flex flex-col md:border-x md:border-gray-200 safe-area-all">
-        
-        {loading ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-2 pb-20">
-             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#ea3323]"></div>
-             <span className="text-sm">正在获取最新QDII数据...</span>
-          </div>
-        ) : (
-          <>
-            <NavBar
-              currentPage={currentPage}
-              pages={pages}
-              onPageChange={handlePageChange}
-            />
-            <MonitoringControl />
-            <HeadlineStats funds={funds} />
-            <FundList
-              funds={funds}
-              currentPage={currentPage}
-              onToggle={handleToggle}
-              onDelete={handleDeleteFund}
-              onToggleMonitoring={handleToggleMonitoring}
-              onTriggerChange={() => {
-                // Optional: Refresh data when triggers change
-                // Currently no-op, but can be used to trigger refresh if needed
-              }}
-            />
-          </>
-        )}
-
-        <FundManager
-          onFundAdded={handleFundAdded}
-          onFundRemoved={handleFundRemoved}
-          allFunds={funds}
-        />
-        <Footer />
+    <div className="min-h-screen pb-12 selection:bg-indigo-100 selection:text-indigo-700">
+      
+      {/* Top Decoration */}
+      <div className="h-48 md:h-64 bg-slate-900 w-full absolute top-0 left-0 -z-10 overflow-hidden">
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-3xl -mr-20 -mt-20"></div>
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-emerald-600/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
       </div>
+
+      <div className="max-w-6xl mx-auto px-3 md:px-8 pt-4 md:pt-6">
+        
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-4 md:mb-5">
+          <div>
+             <h1 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight mb-1 md:mb-2 flex items-center gap-2 md:gap-3">
+               <span className="bg-gradient-to-br from-indigo-400 to-purple-400 text-transparent bg-clip-text">FundMonitor</span>
+               <span className="text-slate-400 text-lg md:text-2xl font-light">Pro</span>
+             </h1>
+             <p className="text-slate-400 font-medium text-xs md:text-base opacity-80 md:opacity-100">Real-time premium tracking & arbitrage dashboard</p>
+          </div>
+          <div className="flex gap-2 self-end md:self-auto">
+             <button className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors border border-slate-700 flex items-center gap-2">
+                <RefreshCcw size={14} className="md:w-4 md:h-4" />
+                <span>Sync</span>
+             </button>
+          </div>
+        </div>
+
+        {/* Control Panel */}
+        <ControlPanel />
+
+        {/* Main Fund List */}
+        <div className="mb-6">
+            
+            {/* Tabs & Filters */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-3 md:mb-4">
+              <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 inline-flex w-full sm:w-auto overflow-x-auto">
+                {[
+                  { id: 'all', label: '全部基金', count: funds.length },
+                  { id: 'nasdaq', label: '纳斯达克', count: nasdaqCount },
+                  { id: 'exchange', label: '场内基金', count: exchangeCount }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex-1 sm:flex-none px-3 md:px-4 py-1.5 md:py-1.5 rounded-lg text-xs md:text-sm font-medium transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
+                      activeTab === tab.id
+                        ? 'bg-slate-900 text-white shadow-md'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    {tab.label}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                      activeTab === tab.id ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="text-xs text-slate-500 font-medium px-2 hidden sm:block">
+                 共 <span className="font-bold text-slate-900">{filteredFunds.length}</span> 个监控项
+              </div>
+            </div>
+
+            {/* List Container */}
+            <div className="bg-white rounded-2xl shadow-soft border border-slate-200/60 overflow-hidden">
+              {/* Mobile Cards */}
+              <div className="md:hidden flex flex-col gap-3 p-3 bg-slate-50">
+                {filteredFunds.map((fund) => (
+                  <FundRow
+                    key={`mobile-${fund.id}`}
+                    fund={fund}
+                    onDelete={handleDelete}
+                    onToggle={handleToggle}
+                  />
+                ))}
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden md:block">
+                <table className="w-full">
+                  <thead className="bg-slate-50/80 border-b border-slate-100 backdrop-blur-sm">
+                    <tr>
+                      {[
+                        { label: '基金名称', width: 'w-1/3' },
+                        { label: '现价', width: 'w-1/6' },
+                        { label: '净值', width: 'w-1/6' },
+                        { label: '溢价率', width: 'w-1/6' },
+                        { label: '操作', width: 'w-[100px]' }
+                      ].map((header, i) => (
+                        <th key={i} className={`px-4 py-2.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider ${header.width}`}>
+                          <div className="flex items-center gap-1 cursor-pointer hover:text-slate-600 transition-colors">
+                            {header.label}
+                            {i < 4 && <ArrowDown size={12} strokeWidth={2.5}/>}
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-50">
+                    {filteredFunds.map((fund) => (
+                      <FundRow
+                        key={`desktop-${fund.id}`}
+                        fund={fund}
+                        onDelete={handleDelete}
+                        onToggle={handleToggle}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {filteredFunds.length === 0 && (
+                 <div className="p-12 text-center flex flex-col items-center gap-3">
+                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
+                      <LayoutDashboard size={24} />
+                    </div>
+                    <span className="text-slate-400 text-sm font-medium">暂无基金数据</span>
+                 </div>
+              )}
+            </div>
+        </div>
+
+      </div>
+
+      {/* Fund Manager - Floating Action Button */}
+      <FundManager
+        onFundAdded={handleFundAdded}
+        onFundRemoved={handleFundRemoved}
+        allFunds={funds.map(f => ({
+          id: f.id,
+          code: f.code,
+          name: f.name,
+          valuation: f.price,
+          valuationRate: f.priceChangePercent,
+          marketPrice: f.netValue,
+          marketPriceRate: f.netValueChangePercent,
+          premiumRate: f.premiumRate,
+          limitText: f.limitTag || '—',
+          isWatchlisted: false,
+          isUserAdded: false
+        }))}
+      />
     </div>
   );
 };
