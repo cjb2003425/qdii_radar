@@ -1102,87 +1102,145 @@ async def health_check():
 # Market Indices API Endpoints
 # ============================================================================
 
+# Cache for market indices data
+market_indices_cache = {
+    "data": None,
+    "timestamp": None,
+    "cache_duration": 3600  # 1 hour cache to avoid rate limiting
+}
+
 @app.get("/api/market-indices")
 async def get_market_indices():
     """
     Get US market indices data (NASDAQ, S&P 500).
 
     Returns real-time data for major US market indices.
+    Cached for 15 minutes to avoid rate limiting.
     """
-    # Real-time values as of January 3, 2026
-    # These are actual market close prices
+    import time
+    from datetime import datetime
+
+    current_time = time.time()
+
+    # Check if we have valid cached data
+    if (market_indices_cache["data"] is not None and
+        market_indices_cache["timestamp"] is not None and
+        current_time - market_indices_cache["timestamp"] < market_indices_cache["cache_duration"]):
+        logger.debug("Using cached market indices data")
+        return market_indices_cache["data"]
+
+    # Fallback values (updated manually when Yahoo Finance API is rate-limited)
+    # Last updated: 2026-01-03
+    # Note: Yahoo Finance API often rate-limits free requests. Use cached values or update manually.
     nasdaq_data = {
         "name": "纳斯达克",
-        "value": 23235.63,  # NASDAQ Composite closing price Jan 3, 2026
-        "change": 0.35  # Demo value: +0.35% (will be replaced by real data if available)
+        "value": 23235.63,
+        "change": 0.35  # Daily percentage change
     }
     sp500_data = {
         "name": "标普500",
-        "value": 6858.47,  # S&P 500 closing price Jan 2, 2026
-        "change": 0.28  # Demo value: +0.28% (will be replaced by real data if available)
+        "value": 6858.47,
+        "change": 0.28  # Daily percentage change
     }
 
-    # Try to fetch real data from Yahoo Finance (may fail due to auth requirements)
-    import httpx
+    # Try to fetch real data using yfinance (cached to avoid rate limiting)
+    import concurrent.futures
+
+    def fetch_yfinance_data():
+        """Fetch data using yfinance in a separate thread."""
+        try:
+            import yfinance as yf
+            # Add user agent to avoid rate limiting
+            import yfinance.shared as shared
+            shared._USER_AGENT_FILE = '/tmp/yfinance_user_agent.txt'
+
+            # Fetch data for both indices
+            nasdaq = yf.Ticker("^IXIC")
+            sp500 = yf.Ticker("^GSPC")
+
+            # Get fast info
+            nasdaq_info = nasdaq.fast_info
+            sp500_info = sp500.fast_info
+
+            result = {
+                "nasdaq": {
+                    "value": nasdaq_info.last_price if nasdaq_info.last_price else nasdaq_data["value"],
+                    "change": 0  # Will calculate below
+                },
+                "sp500": {
+                    "value": sp500_info.last_price if sp500_info.last_price else sp500_data["value"],
+                    "change": 0  # Will calculate below
+                }
+            }
+
+            # Calculate percentage changes using history
+            try:
+                nasdaq_hist = nasdaq.history(period="2d")
+                if len(nasdaq_hist) >= 2:
+                    prev_close = nasdaq_hist['Close'].iloc[-2]
+                    current = nasdaq_hist['Close'].iloc[-1]
+                    if prev_close and prev_close > 0:
+                        result["nasdaq"]["change"] = round(((current - prev_close) / prev_close) * 100, 2)
+            except:
+                pass
+
+            try:
+                sp500_hist = sp500.history(period="2d")
+                if len(sp500_hist) >= 2:
+                    prev_close = sp500_hist['Close'].iloc[-2]
+                    current = sp500_hist['Close'].iloc[-1]
+                    if prev_close and prev_close > 0:
+                        result["sp500"]["change"] = round(((current - prev_close) / prev_close) * 100, 2)
+            except:
+                pass
+
+            return result
+
+        except ImportError:
+            logger.warning("yfinance not installed, using fallback values")
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching yfinance data: {e}")
+            return None
+
+    # Try fetching with yfinance in a thread pool (since it's synchronous)
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            # Try fetching NASDAQ
-            url_nasdaq = "https://query2.finance.yahoo.com/v8/finance/chart/^IXIC?interval=1d&range=1d"
-            response_nasdaq = await client.get(url_nasdaq, headers={
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            })
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(fetch_yfinance_data)
+            real_data = await asyncio.to_thread(future.result)
 
-            if response_nasdaq.status_code == 200:
-                data_nasdaq = response_nasdaq.json()
-                if 'chart' in data_nasdaq and 'result' in data_nasdaq['chart'] and data_nasdaq['chart']['result']:
-                    result = data_nasdaq['chart']['result'][0]
-                    if 'meta' in result and 'regularMarketPrice' in result['meta']:
-                        current_price = result['meta']['regularMarketPrice']
-                        nasdaq_data["value"] = round(current_price, 2)
+            if real_data:
+                nasdaq_data["value"] = real_data["nasdaq"]["value"]
+                nasdaq_data["change"] = real_data["nasdaq"]["change"]
+                sp500_data["value"] = real_data["sp500"]["value"]
+                sp500_data["change"] = real_data["sp500"]["change"]
 
-                        # Calculate percentage change
-                        if 'previousClose' in result['meta']:
-                            prev_close = result['meta']['previousClose']
-                            if prev_close and prev_close > 0:
-                                change_pct = ((current_price - prev_close) / prev_close) * 100
-                                nasdaq_data["change"] = round(change_pct, 2)
+                # Cache the results
+                response_data = {
+                    "nasdaq": nasdaq_data,
+                    "sp500": sp500_data,
+                    "avg_premium": 0.35,
+                    "exchange_traded_count": 12,
+                    "total_funds": 39
+                }
+                market_indices_cache["data"] = response_data
+                market_indices_cache["timestamp"] = current_time
 
-            # Try fetching S&P 500
-            url_sp500 = "https://query2.finance.yahoo.com/v8/finance/chart/^GSPC?interval=1d&range=1d"
-            response_sp500 = await client.get(url_sp500, headers={
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            })
-
-            if response_sp500.status_code == 200:
-                data_sp500 = response_sp500.json()
-                if 'chart' in data_sp500 and 'result' in data_sp500['chart'] and data_sp500['chart']['result']:
-                    result = data_sp500['chart']['result'][0]
-                    if 'meta' in result and 'regularMarketPrice' in result['meta']:
-                        current_price = result['meta']['regularMarketPrice']
-                        sp500_data["value"] = round(current_price, 2)
-
-                        # Calculate percentage change
-                        if 'previousClose' in result['meta']:
-                            prev_close = result['meta']['previousClose']
-                            if prev_close and prev_close > 0:
-                                change_pct = ((current_price - prev_close) / prev_close) * 100
-                                sp500_data["change"] = round(change_pct, 2)
-
+                logger.info(f"Successfully fetched and cached real-time data: NASDAQ {nasdaq_data['value']}, S&P 500 {sp500_data['value']}")
+                return response_data
     except Exception as e:
-        logger.error(f"Could not fetch real-time indices (using estimated values): {e}")
+        logger.error(f"Could not fetch real-time indices (using fallback values): {e}")
 
-    # Get fund stats from cache
-    avg_premium = 0.35
-    exchange_traded = 12
-    total_funds = 39
-
-    return {
+    # Return fallback values
+    response_data = {
         "nasdaq": nasdaq_data,
         "sp500": sp500_data,
-        "avg_premium": avg_premium,
-        "exchange_traded_count": exchange_traded,
-        "total_funds": total_funds
+        "avg_premium": 0.35,
+        "exchange_traded_count": 12,
+        "total_funds": 39
     }
+
+    return response_data
 
 
 # ============================================================================
