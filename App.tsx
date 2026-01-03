@@ -204,13 +204,14 @@ const App: React.FC = () => {
              <button
                 onClick={handleRefresh}
                 disabled={refreshing}
-                className={`bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors border border-slate-700 flex items-center gap-2 ${
+                className={`bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white px-4 py-2.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors border border-slate-700 flex items-center gap-2 min-h-[44px] min-w-[44px] touch-manipulation ${
                   refreshing ? 'opacity-60 cursor-not-allowed' : ''
                 }`}
                 title="刷新基金数据"
              >
-                <RefreshCcw size={14} className={`md:w-4 md:h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                <span>{refreshing ? '刷新中...' : 'Sync'}</span>
+                <RefreshCcw size={16} className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">{refreshing ? '刷新中...' : 'Sync'}</span>
+                <span className="sm:hidden">{refreshing ? '...' : 'Sync'}</span>
              </button>
           </div>
         </div>
