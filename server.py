@@ -1106,7 +1106,7 @@ async def health_check():
 market_indices_cache = {
     "data": None,
     "timestamp": None,
-    "cache_duration": 3600  # 1 hour cache to avoid rate limiting
+    "cache_duration": 60  # 1 minute cache for real-time data
 }
 
 @app.get("/api/market-indices")
@@ -1114,11 +1114,11 @@ async def get_market_indices():
     """
     Get US market indices data (NASDAQ, S&P 500).
 
-    Returns real-time data for major US market indices.
-    Cached for 15 minutes to avoid rate limiting.
+    Returns real-time data from Eastmoney API.
+    Cached for 1 minute to reduce API calls while keeping data fresh.
     """
     import time
-    from datetime import datetime
+    import httpx
 
     current_time = time.time()
 
@@ -1129,109 +1129,57 @@ async def get_market_indices():
         logger.debug("Using cached market indices data")
         return market_indices_cache["data"]
 
-    # Fallback values (updated manually when Yahoo Finance API is rate-limited)
-    # Last updated: 2026-01-03
-    # Note: Yahoo Finance API often rate-limits free requests. Use cached values or update manually.
+    # Initialize with fallback values
     nasdaq_data = {
         "name": "纳斯达克",
         "value": 23235.63,
-        "change": 0.35  # Daily percentage change
+        "change": 0.0
     }
     sp500_data = {
         "name": "标普500",
         "value": 6858.47,
-        "change": 0.28  # Daily percentage change
+        "change": 0.0
     }
 
-    # Try to fetch real data using yfinance (cached to avoid rate limiting)
-    import concurrent.futures
-
-    def fetch_yfinance_data():
-        """Fetch data using yfinance in a separate thread."""
-        try:
-            import yfinance as yf
-            # Add user agent to avoid rate limiting
-            import yfinance.shared as shared
-            shared._USER_AGENT_FILE = '/tmp/yfinance_user_agent.txt'
-
-            # Fetch data for both indices
-            nasdaq = yf.Ticker("^IXIC")
-            sp500 = yf.Ticker("^GSPC")
-
-            # Get fast info
-            nasdaq_info = nasdaq.fast_info
-            sp500_info = sp500.fast_info
-
-            result = {
-                "nasdaq": {
-                    "value": nasdaq_info.last_price if nasdaq_info.last_price else nasdaq_data["value"],
-                    "change": 0  # Will calculate below
-                },
-                "sp500": {
-                    "value": sp500_info.last_price if sp500_info.last_price else sp500_data["value"],
-                    "change": 0  # Will calculate below
-                }
-            }
-
-            # Calculate percentage changes using history
-            try:
-                nasdaq_hist = nasdaq.history(period="2d")
-                if len(nasdaq_hist) >= 2:
-                    prev_close = nasdaq_hist['Close'].iloc[-2]
-                    current = nasdaq_hist['Close'].iloc[-1]
-                    if prev_close and prev_close > 0:
-                        result["nasdaq"]["change"] = round(((current - prev_close) / prev_close) * 100, 2)
-            except:
-                pass
-
-            try:
-                sp500_hist = sp500.history(period="2d")
-                if len(sp500_hist) >= 2:
-                    prev_close = sp500_hist['Close'].iloc[-2]
-                    current = sp500_hist['Close'].iloc[-1]
-                    if prev_close and prev_close > 0:
-                        result["sp500"]["change"] = round(((current - prev_close) / prev_close) * 100, 2)
-            except:
-                pass
-
-            return result
-
-        except ImportError:
-            logger.warning("yfinance not installed, using fallback values")
-            return None
-        except Exception as e:
-            logger.error(f"Error fetching yfinance data: {e}")
-            return None
-
-    # Try fetching with yfinance in a thread pool (since it's synchronous)
+    # Fetch real-time data from Eastmoney API
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(fetch_yfinance_data)
-            real_data = await asyncio.to_thread(future.result)
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # Fetch NASDAQ (100.NDX) and S&P 500 (100.SPX) data
+            url = "https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3&secids=100.NDX,100.SPX"
 
-            if real_data:
-                nasdaq_data["value"] = real_data["nasdaq"]["value"]
-                nasdaq_data["change"] = real_data["nasdaq"]["change"]
-                sp500_data["value"] = real_data["sp500"]["value"]
-                sp500_data["change"] = real_data["sp500"]["change"]
+            response = await client.get(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            })
 
-                # Cache the results
-                response_data = {
-                    "nasdaq": nasdaq_data,
-                    "sp500": sp500_data,
-                    "avg_premium": 0.35,
-                    "exchange_traded_count": 12,
-                    "total_funds": 39
-                }
-                market_indices_cache["data"] = response_data
-                market_indices_cache["timestamp"] = current_time
+            if response.status_code == 200:
+                data = response.json()
 
-                logger.info(f"Successfully fetched and cached real-time data: NASDAQ {nasdaq_data['value']}, S&P 500 {sp500_data['value']}")
-                return response_data
+                if data.get('data') and data['data'].get('diff'):
+                    for item in data['data']['diff']:
+                        symbol = item.get('f12', '')
+                        name = item.get('f14', '')
+                        value = item.get('f2', 0)
+                        change = item.get('f3', 0)
+
+                        if symbol == 'NDX':
+                            nasdaq_data = {
+                                "name": name,
+                                "value": round(value, 2),
+                                "change": round(change, 2)
+                            }
+                        elif symbol == 'SPX':
+                            sp500_data = {
+                                "name": name,
+                                "value": round(value, 2),
+                                "change": round(change, 2)
+                            }
+
+                    logger.info(f"Successfully fetched market indices: NASDAQ {nasdaq_data['value']} ({nasdaq_data['change']:.2f}%), S&P 500 {sp500_data['value']} ({sp500_data['change']:.2f}%)")
+
     except Exception as e:
-        logger.error(f"Could not fetch real-time indices (using fallback values): {e}")
+        logger.error(f"Error fetching market indices from Eastmoney: {e}")
 
-    # Return fallback values
+    # Build response
     response_data = {
         "nasdaq": nasdaq_data,
         "sp500": sp500_data,
@@ -1239,6 +1187,10 @@ async def get_market_indices():
         "exchange_traded_count": 12,
         "total_funds": 39
     }
+
+    # Cache the results
+    market_indices_cache["data"] = response_data
+    market_indices_cache["timestamp"] = current_time
 
     return response_data
 
