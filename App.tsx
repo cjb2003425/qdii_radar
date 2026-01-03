@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { FundRow } from './components/FundRow';
 import FundManager from './components/FundManager';
+import { Footer } from './components/Footer';
 import { Fund } from './types';
 import { fetchQDIIFunds } from './services/fundService';
 import { initializeFunds } from './services/userFundService';
@@ -180,7 +181,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen pb-12 selection:bg-indigo-100 selection:text-indigo-700">
+    <div className="min-h-screen flex flex-col selection:bg-indigo-100 selection:text-indigo-700">
       
       {/* Top Decoration */}
       <div className="h-48 md:h-64 bg-slate-900 w-full absolute top-0 left-0 -z-10 overflow-hidden">
@@ -331,6 +332,9 @@ const App: React.FC = () => {
           isUserAdded: false
         }))}
       />
+
+      {/* Footer */}
+      <Footer />
     </div>
   );
 };
