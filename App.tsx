@@ -181,35 +181,35 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col selection:bg-indigo-100 selection:text-indigo-700">
-      
+    <div className="min-h-screen flex flex-col selection:bg-indigo-100 selection:text-indigo-700 overflow-x-hidden">
+
       {/* Top Decoration */}
-      <div className="h-48 md:h-64 bg-slate-900 w-full absolute top-0 left-0 -z-10 overflow-hidden">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-3xl -mr-20 -mt-20"></div>
-        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-emerald-600/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
+      <div className="h-36 md:h-64 bg-slate-900 w-full absolute top-0 left-0 -z-10 overflow-hidden">
+        <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-indigo-600/20 rounded-full blur-3xl -mr-20 -mt-20"></div>
+        <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-emerald-600/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-3 md:px-8 pt-4 md:pt-6">
-        
+      <div className="w-full max-w-6xl mx-auto px-2.5 md:px-8 pt-3 md:pt-6 pb-4">
+
         {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-4 md:mb-5">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 md:gap-4 mb-3 md:mb-5">
           <div>
-             <h1 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight mb-1 md:mb-2 flex items-center gap-2 md:gap-3">
+             <h1 className="text-xl md:text-4xl font-extrabold text-white tracking-tight mb-0.5 md:mb-2 flex items-center gap-2 md:gap-3">
                <span className="bg-gradient-to-br from-indigo-400 to-purple-400 text-transparent bg-clip-text">FundMonitor</span>
-               <span className="text-slate-400 text-lg md:text-2xl font-light">Pro</span>
+               <span className="text-slate-400 text-base md:text-2xl font-light">Pro</span>
              </h1>
-             <p className="text-slate-400 font-medium text-xs md:text-base opacity-80 md:opacity-100">Real-time premium tracking & arbitrage dashboard</p>
+             <p className="text-slate-400 font-medium text-[10px] md:text-base opacity-80 md:opacity-100 hidden sm:block">Real-time premium tracking & arbitrage dashboard</p>
           </div>
           <div className="flex gap-2 self-end md:self-auto">
              <button
                 onClick={handleRefresh}
                 disabled={refreshing}
-                className={`bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white px-4 py-2.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors border border-slate-700 flex items-center gap-2 min-h-[44px] min-w-[44px] touch-manipulation ${
+                className={`bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white px-5 py-3 md:px-4 md:py-2 rounded-xl text-sm md:text-sm font-medium transition-colors border border-slate-700 flex items-center justify-center gap-2 min-h-[48px] min-w-[48px] touch-manipulation active:scale-95 ${
                   refreshing ? 'opacity-60 cursor-not-allowed' : ''
                 }`}
                 title="刷新基金数据"
              >
-                <RefreshCcw size={16} className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                <RefreshCcw size={18} className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
                 <span className="hidden sm:inline">{refreshing ? '刷新中...' : 'Sync'}</span>
                 <span className="sm:hidden">{refreshing ? '...' : 'Sync'}</span>
              </button>
@@ -223,8 +223,8 @@ const App: React.FC = () => {
         <div className="mb-6">
             
             {/* Tabs & Filters */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-3 md:mb-4">
-              <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 inline-flex w-full sm:w-auto overflow-x-auto">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3 md:mb-4">
+              <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 inline-flex w-full sm:w-auto overflow-hidden">
                 {[
                   { id: 'all', label: '全部基金', count: funds.length },
                   { id: 'nasdaq', label: '纳斯达克', count: nasdaqCount },
@@ -233,7 +233,7 @@ const App: React.FC = () => {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex-1 sm:flex-none px-3 md:px-4 py-1.5 md:py-1.5 rounded-lg text-xs md:text-sm font-medium transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
+                    className={`flex-1 sm:flex-none px-2.5 py-2 md:px-4 md:py-1.5 rounded-lg text-sm md:text-sm font-medium transition-all flex items-center justify-center gap-1.5 whitespace-nowrap min-h-[44px] active:scale-95 ${
                       activeTab === tab.id
                         ? 'bg-slate-900 text-white shadow-md'
                         : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
@@ -257,7 +257,7 @@ const App: React.FC = () => {
             {/* List Container */}
             <div className="bg-white rounded-2xl shadow-soft border border-slate-200/60 overflow-hidden">
               {/* Mobile Cards */}
-              <div className="md:hidden flex flex-col gap-3 p-3 bg-slate-50">
+              <div className="md:hidden flex flex-col gap-3 p-2.5 bg-slate-50">
                 {filteredFunds.map((fund) => (
                   <FundRow
                     key={`mobile-${fund.id}`}

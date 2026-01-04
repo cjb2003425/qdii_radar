@@ -136,67 +136,67 @@ export const FundRow: React.FC<FundRowProps> = ({ fund, onDelete, onToggle }) =>
       </tr>
 
       {/* Mobile View (Compact Card) */}
-      <div className="md:hidden bg-white rounded-xl p-3 border border-slate-100 shadow-sm relative overflow-hidden">
+      <div className="md:hidden bg-white rounded-xl p-2.5 border border-slate-100 shadow-sm relative overflow-hidden active:scale-[0.99] transition-transform duration-150">
         {/* Status Bar */}
         <div className={`absolute left-0 top-0 bottom-0 w-1 ${fund.isMonitorEnabled ? 'bg-indigo-500' : 'bg-slate-200'}`}></div>
-        
-        <div className="pl-2.5 flex flex-col gap-2.5">
+
+        <div className="pl-2.5 flex flex-col gap-2">
             {/* Header: Name, Code, Tags, Toggle */}
-            <div className="flex justify-between items-start">
-                <div className="min-w-0 pr-2 flex-1">
-                     <div className="font-bold text-slate-800 text-[14px] leading-tight truncate">{fund.name}</div>
-                     <div className="flex items-center flex-wrap gap-2 mt-1.5">
-                        <span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-1 rounded border border-slate-100">{fund.code}</span>
+            <div className="flex justify-between items-start gap-2">
+                <div className="min-w-0 flex-1">
+                     <div className="font-bold text-slate-800 text-[13px] leading-tight truncate pr-1">{fund.name}</div>
+                     <div className="flex items-center flex-wrap gap-1 mt-1">
+                        <span className="text-[9px] text-slate-400 font-mono bg-slate-50 px-1 py-0.5 rounded border border-slate-100">{fund.code}</span>
                         {fund.limitTag && (
-                          <span className={`px-1 py-[1px] rounded-[3px] text-[9px] leading-none font-medium border ${getLimitBadgeStyle(fund.limitStatus)}`}>
+                          <span className={`px-1 py-0.5 rounded text-[8px] leading-none font-medium border ${getLimitBadgeStyle(fund.limitStatus)}`}>
                             {fund.limitTag}
                           </span>
                         )}
                      </div>
                 </div>
                 {/* Compact Controls */}
-                <div className="flex items-center gap-3 flex-shrink-0 pt-0.5">
+                <div className="flex items-center gap-1.5 flex-shrink-0">
                     {fund.hasSettings && (
                       <button
                         onClick={() => setShowTriggerSettings(true)}
-                        className="text-slate-300 active:text-indigo-500"
+                        className="text-slate-400 active:text-indigo-600 p-1.5 -m-1.5 rounded-full hover:bg-slate-100 active:bg-indigo-50 transition-colors"
                         title="触发器设置"
                       >
-                        <Settings size={16} />
+                        <Settings size={15} />
                       </button>
                     )}
-                    <button 
+                    <button
                         onClick={() => onToggle(fund.id)}
-                        className={`w-8 h-5 rounded-full p-0.5 transition-colors duration-200 ease-in-out relative ${fund.isMonitorEnabled ? 'bg-indigo-500' : 'bg-slate-200'}`}
+                        className={`w-10 h-5.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out relative flex-shrink-0 ${fund.isMonitorEnabled ? 'bg-indigo-500' : 'bg-slate-300'} active:scale-95`}
                     >
-                        <div className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ${fund.isMonitorEnabled ? 'translate-x-3' : 'translate-x-0'}`}></div>
+                        <div className={`bg-white w-4.5 h-4.5 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${fund.isMonitorEnabled ? 'translate-x-4.5' : 'translate-x-0'}`}></div>
                     </button>
                 </div>
             </div>
 
             {/* Compact Data Grid */}
-            <div className="grid grid-cols-3 gap-2 bg-slate-50/50 rounded-lg p-2 border border-slate-50">
+            <div className="grid grid-cols-3 gap-1.5 bg-slate-50/80 rounded-lg p-1.5 border border-slate-100">
                  {/* Price */}
                  <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 scale-95 origin-left mb-0.5">现价</span>
+                    <span className="text-[8px] text-slate-400 mb-0.5">现价</span>
                     <div className="flex flex-col leading-none">
                         <span className="font-bold text-slate-700 font-mono text-[13px]">{fund.price.toFixed(4)}</span>
-                        <span className={`text-[10px] font-bold mt-1 ${getColor(fund.priceChangePercent)}`}>{formatPercent(fund.priceChangePercent)}</span>
+                        <span className={`text-[9px] font-bold mt-0.5 ${getColor(fund.priceChangePercent)}`}>{formatPercent(fund.priceChangePercent)}</span>
                     </div>
                  </div>
-                 
+
                  {/* Net Value */}
-                 <div className="flex flex-col pl-2 border-l border-slate-100">
-                    <span className="text-[9px] text-slate-400 scale-95 origin-left mb-0.5">净值</span>
+                 <div className="flex flex-col pl-1.5 border-l border-slate-200">
+                    <span className="text-[8px] text-slate-400 mb-0.5">净值</span>
                     <div className="flex flex-col leading-none">
                         <span className="font-medium text-slate-600 font-mono text-[13px]">{fund.netValue.toFixed(4)}</span>
-                        <span className={`text-[10px] font-medium mt-1 ${getColor(fund.netValueChangePercent)}`}>{formatPercent(fund.netValueChangePercent)}</span>
+                        <span className={`text-[9px] font-medium mt-0.5 ${getColor(fund.netValueChangePercent)}`}>{formatPercent(fund.netValueChangePercent)}</span>
                     </div>
                  </div>
 
                  {/* Premium */}
-                 <div className="flex flex-col items-end pl-2 border-l border-slate-100">
-                    <span className="text-[9px] text-slate-400 scale-95 origin-right mb-0.5">溢价率</span>
+                 <div className="flex flex-col items-end pl-1.5 border-l border-slate-200">
+                    <span className="text-[8px] text-slate-400 mb-0.5">溢价率</span>
                      <div className={`font-bold font-mono text-[13px] mt-0.5 ${getColor(fund.premiumRate)}`}>{formatPercent(fund.premiumRate)}</div>
                  </div>
             </div>
