@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { Plus, X, Search, Trash2, CheckSquare, Square, AlertCircle, Check } from 'lucide-react';
 import { addUserFund, removeUserFund, getUserFunds, canAddUserFund } from '../services/userFundService';
 import { lookupFund, addFundToBackend, deleteFundFromBackend, batchDeleteFundsFromBackend } from '../services/fundApiService';
 import { FundData } from '../types/fund';
@@ -171,42 +172,47 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 bg-[#ea3323] hover:bg-[#c42b1E] text-white p-4 rounded-full shadow-lg transition-all duration-200 z-50 flex items-center justify-center hover:scale-110 safe-area-bottom"
+        className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-full shadow-glow transition-all duration-200 z-50 flex items-center justify-center hover:scale-110 active:scale-95 safe-area-bottom"
         title="管理基金"
         style={{ minWidth: '56px', minHeight: '56px' }}
       >
-        <svg className="w-7 h-7 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
+        <Plus size={28} className="sm:w-8 sm:h-8" strokeWidth={2.5} />
       </button>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 safe-area-all">
-      <div className="bg-white rounded-lg w-full max-w-lg sm:max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4 safe-area-all backdrop-blur-sm">
+      <div className="bg-white rounded-2xl w-full max-w-lg sm:max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col border border-slate-200/60">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#ea3323] to-[#c42b1E] text-white px-3 py-2.5 sm:px-4 sm:py-3 shrink-0">
-          <div className="flex justify-between items-center gap-2">
+        <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 text-white px-3 py-2.5 sm:px-4 sm:py-3 shrink-0 relative overflow-hidden">
+          {/* Decorative background element */}
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
+
+          <div className="flex justify-between items-center gap-2 relative z-10">
             <div className="min-w-0 flex-1">
-              <h2 className="text-base sm:text-lg font-bold truncate">基金管理</h2>
+              <h2 className="text-base sm:text-lg font-bold truncate flex items-center gap-2">
+                <Search size={18} className="sm:w-5 sm:h-5" strokeWidth={2} />
+                基金管理
+              </h2>
               <p className="text-white/80 text-[10px] sm:text-xs mt-0.5">共 {allFunds.length} 只基金</p>
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="text-white hover:bg-white/20 rounded-full p-1.5 transition-colors min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center shrink-0"
+              className="text-white hover:bg-white/20 rounded-full p-1.5 transition-all hover:scale-110 active:scale-95 min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center shrink-0"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X size={20} className="sm:w-5 sm:h-5" strokeWidth={2} />
             </button>
           </div>
         </div>
 
-        <div className="p-2.5 sm:p-4 overflow-y-auto flex-1">
+        <div className="p-2.5 sm:p-4 overflow-y-auto flex-1 bg-slate-50/30">
           {/* Add Fund Form */}
-          <div className="mb-3 sm:mb-4 bg-gray-50 p-2.5 sm:p-3 rounded-lg border border-gray-200">
-            <h3 className="text-xs sm:text-sm font-semibold text-gray-900 mb-2">添加新基金</h3>
+          <div className="mb-3 sm:mb-4 bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-soft">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+              <Plus size={14} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
+              添加新基金
+            </h3>
 
             <form onSubmit={handleAddFund} className="space-y-2">
               <div className="relative">
@@ -217,14 +223,14 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                       type="text"
                       value={code}
                       onChange={(e) => setCode(e.target.value)}
-                      placeholder="输入6位代码"
-                      className="w-full px-2.5 py-2 sm:px-3 sm:py-2.5 pr-9 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ea3323] focus:border-transparent text-sm sm:text-base"
+                      placeholder="输入6位基金代码"
+                      className="w-full px-2.5 py-2 sm:px-3 sm:py-2.5 pr-9 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm sm:text-base bg-white transition-all"
                       maxLength={6}
                       disabled={loading}
                     />
                     {isLookingUp && (
                       <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                        <svg className="animate-spin h-4 w-4 sm:h-5 sm:w-5 text-[#ea3323]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <svg className="animate-spin h-4 w-4 sm:h-5 sm:w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
@@ -234,7 +240,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                   <button
                     type="submit"
                     disabled={loading}
-                    className="bg-[#ea3323] hover:bg-[#c42b1E] text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 disabled:bg-gray-400 min-h-[40px] sm:min-h-[44px] min-w-[60px] sm:min-w-[80px] flex items-center justify-center gap-1.5 shrink-0"
+                    className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 disabled:from-slate-400 disabled:to-slate-500 disabled:cursor-not-allowed min-h-[40px] sm:min-h-[44px] min-w-[60px] sm:min-w-[80px] flex items-center justify-center gap-1.5 shrink-0 shadow-md hover:shadow-lg active:scale-95"
                   >
                     {loading && (
                       <svg className="animate-spin h-3.5 w-3.5 sm:h-4 sm:w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -251,20 +257,16 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs">
                   <div className="flex items-start gap-1.5">
-                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                    <span className="flex-1">{error}</span>
+                    <AlertCircle size={14} className="sm:w-4 sm:h-4 shrink-0 mt-0.5" strokeWidth={2} />
+                    <span className="flex-1 whitespace-pre-line">{error}</span>
                   </div>
                 </div>
               )}
 
               {successMessage && (
-                <div className="bg-green-50 border border-green-200 text-green-700 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs">
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs">
                   <div className="flex items-center gap-1.5">
-                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
+                    <Check size={14} className="sm:w-4 sm:h-4 shrink-0" strokeWidth={2.5} />
                     <span className="flex-1">{successMessage}</span>
                   </div>
                 </div>
@@ -276,12 +278,12 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
           {allFunds.length > 0 && (
             <div>
               <div className="flex justify-between items-center mb-2 sm:mb-3 gap-2">
-                <h3 className="text-xs sm:text-sm font-semibold text-gray-900">基金列表</h3>
+                <h3 className="text-xs sm:text-sm font-bold text-slate-800">基金列表</h3>
                 <div className="flex gap-1.5 sm:gap-2">
                   {!isBatchMode && (
                     <button
                       onClick={() => setIsBatchMode(true)}
-                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs font-medium transition-colors min-h-[36px] sm:min-h-[44px]"
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs font-semibold transition-colors min-h-[36px] sm:min-h-[44px] active:scale-95"
                     >
                       批量管理
                     </button>
@@ -290,7 +292,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                     <>
                       <button
                         onClick={handleSelectAll}
-                        className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs font-medium transition-colors min-h-[36px] sm:min-h-[44px]"
+                        className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs font-semibold transition-colors min-h-[36px] sm:min-h-[44px] active:scale-95"
                       >
                         {selectedFunds.size === allFunds.length ? '取消全选' : '全选'}
                       </button>
@@ -299,7 +301,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                           setIsBatchMode(false);
                           setSelectedFunds(new Set());
                         }}
-                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs font-medium transition-colors min-h-[36px] sm:min-h-[44px]"
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs font-semibold transition-colors min-h-[36px] sm:min-h-[44px] active:scale-95"
                       >
                         取消
                       </button>
@@ -309,11 +311,14 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
               </div>
 
               {isBatchMode && selectedFunds.size > 0 && (
-                <div className="mb-2 sm:mb-3 bg-blue-50 border border-blue-200 rounded-lg p-2 flex justify-between items-center gap-2">
-                  <span className="text-blue-700 text-[10px] sm:text-xs font-medium">已选择 {selectedFunds.size} 只基金</span>
+                <div className="mb-2 sm:mb-3 bg-indigo-50 border border-indigo-200 rounded-xl p-2 flex justify-between items-center gap-2 shadow-sm">
+                  <span className="text-indigo-700 text-[10px] sm:text-xs font-semibold flex items-center gap-1">
+                    <CheckSquare size={12} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
+                    已选择 {selectedFunds.size} 只基金
+                  </span>
                   <button
                     onClick={handleBatchDelete}
-                    className="bg-red-500 hover:bg-red-600 text-white px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs font-medium transition-colors min-h-[36px] sm:min-h-[44px] shrink-0"
+                    className="bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs font-semibold transition-all min-h-[36px] sm:min-h-[44px] shrink-0 shadow-md hover:shadow-lg active:scale-95"
                   >
                     删除选中
                   </button>
@@ -324,38 +329,37 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                 {allFunds.map((fund) => (
                   <div
                     key={fund.code}
-                    className={`bg-white border rounded-lg p-2 sm:p-2.5 transition-all ${
-                      selectedFunds.has(fund.code) ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-200 hover:border-gray-300'
+                    className={`bg-white border rounded-xl p-2 sm:p-2.5 transition-all shadow-sm hover:shadow-md ${
+                      selectedFunds.has(fund.code) ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'
                     }`}
                   >
                     <div className="flex items-center gap-1.5 sm:gap-2">
                       {isBatchMode && (
-                        <input
-                          type="checkbox"
-                          checked={selectedFunds.has(fund.code)}
-                          onChange={() => handleToggleSelect(fund.code)}
-                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 shrink-0"
-                        />
+                        <div className="relative shrink-0">
+                          {selectedFunds.has(fund.code) ? (
+                            <CheckSquare size={18} className="text-indigo-600" strokeWidth={2.5} />
+                          ) : (
+                            <Square size={18} className="text-slate-400" strokeWidth={2} />
+                          )}
+                        </div>
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1">
-                          <span className="text-xs sm:text-sm font-semibold text-gray-900 truncate">{fund.name}</span>
+                          <span className="text-xs sm:text-sm font-bold text-slate-800 truncate">{fund.name}</span>
                           {fund.isUserAdded && (
-                            <span className="bg-blue-100 text-blue-700 text-[9px] sm:text-xs px-1 py-0.5 sm:px-1.5 sm:py-0.5 rounded-full font-medium shrink-0">自定义</span>
+                            <span className="bg-indigo-100 text-indigo-700 text-[9px] sm:text-xs px-1 py-0.5 sm:px-1.5 sm:py-0.5 rounded-full font-bold shrink-0">自定义</span>
                           )}
                         </div>
-                        <div className="text-[10px] sm:text-xs text-gray-500">代码: {fund.code}</div>
+                        <div className="text-[10px] sm:text-xs text-slate-500 font-mono">{fund.code}</div>
                       </div>
                       {!isBatchMode && (
                         <button
                           onClick={() => handleRemoveFund(fund.code, fund.isUserAdded || false)}
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 sm:p-2 rounded-lg transition-colors shrink-0"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 sm:p-2 rounded-lg transition-all shrink-0 active:scale-95"
                           title="删除基金"
                           style={{ minWidth: '36px', minHeight: '36px' }}
                         >
-                          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
+                          <Trash2 size={14} className="sm:w-4 sm:h-4" strokeWidth={2} />
                         </button>
                       )}
                     </div>
