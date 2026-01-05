@@ -7,7 +7,7 @@ import { Fund } from './types';
 import { fetchQDIIFunds } from './services/fundService';
 import { initializeFunds } from './services/userFundService';
 import { FundData } from './types/fund';
-import { ArrowDown, RefreshCcw, LayoutDashboard } from 'lucide-react';
+import { ArrowDown, ArrowUp, RefreshCcw, LayoutDashboard } from 'lucide-react';
 
 // Map FundData (from backend) to Fund (new UI format)
 const mapFundDataToFund = (data: FundData): Fund => {
@@ -38,6 +38,25 @@ const App: React.FC = () => {
   const [funds, setFunds] = useState<Fund[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [sortColumn, setSortColumn] = useState<string | null>('netValue');  // Default to netValue sort
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  // Handle tab change with default sorting
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+
+    // Set default sort for All Funds and NASDAQ tabs
+    if (tabId === 'all' || tabId === 'nasdaq') {
+      setSortColumn('netValue');
+      setSortDirection('desc');
+      console.log(`🔄 ${tabId} tab: Default sort by NAV percentage change descending`);
+    } else if (tabId === 'exchange') {
+      // For exchange-traded funds, sort by premium rate
+      setSortColumn('premiumRate');
+      setSortDirection('desc');
+      console.log(`🔄 ${tabId} tab: Default sort by premium rate descending`);
+    }
+  };
 
   // Filter funds based on active tab
   const filteredFunds = funds.filter(fund => {
@@ -50,6 +69,64 @@ const App: React.FC = () => {
     }
     return true;
   });
+
+  // Sort filtered funds
+  const sortedFunds = [...filteredFunds].sort((a, b) => {
+    if (!sortColumn) return 0;
+
+    let aValue: number | string;
+    let bValue: number | string;
+
+    switch (sortColumn) {
+      case 'name':
+        aValue = a.name;
+        bValue = b.name;
+        break;
+      case 'price':
+        aValue = a.priceChangePercent;  // Sort by percentage change
+        bValue = b.priceChangePercent;
+        break;
+      case 'netValue':
+        aValue = a.netValueChangePercent;  // Sort by percentage change
+        bValue = b.netValueChangePercent;
+        break;
+      case 'premiumRate':
+        aValue = a.premiumRate;
+        bValue = b.premiumRate;
+        break;
+      default:
+        return 0;
+    }
+
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      return sortDirection === 'asc'
+        ? aValue.localeCompare(bValue, 'zh-CN')
+        : bValue.localeCompare(aValue, 'zh-CN');
+    }
+
+    if (sortDirection === 'asc') {
+      return (aValue as number) - (bValue as number);
+    } else {
+      return (bValue as number) - (aValue as number);
+    }
+  });
+
+  // Handle column header click
+  const handleSort = (column: string) => {
+    const newDirection = (sortColumn === column && sortDirection === 'desc') ? 'asc' : 'desc';
+
+    if (sortColumn === column) {
+      // Toggle direction if clicking the same column
+      setSortDirection(newDirection);
+    } else {
+      // New column, default to descending for numbers, ascending for text
+      setSortColumn(column);
+      setSortDirection(column === 'name' ? 'asc' : 'desc');
+    }
+
+    // Debug logging
+    console.log(`🔄 Sorting by ${column}, direction: ${newDirection}`);
+  };
 
   // Calculate counts
   const nasdaqCount = funds.filter(f => f.name.includes('纳斯达克') || f.name.includes('纳指')).length;
@@ -105,6 +182,13 @@ const App: React.FC = () => {
         const result = await response.json();
         if (result.success) {
           console.log(`✅ Fund ${fundToDelete.code} deleted from backend`);
+
+          // Also remove from localStorage to prevent reappearing after refresh
+          const { removeUserFund } = await import('./services/userFundService');
+          const removed = removeUserFund(fundToDelete.code);
+          if (removed) {
+            console.log(`✅ Fund ${fundToDelete.code} removed from localStorage`);
+          }
         } else {
           console.warn(`⚠️ Backend returned success=false: ${result.message}`);
         }
@@ -232,7 +316,7 @@ const App: React.FC = () => {
                 ].map(tab => (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => handleTabChange(tab.id)}
                     className={`flex-1 sm:flex-none px-2.5 py-2 md:px-4 md:py-1.5 rounded-lg text-sm md:text-sm font-medium transition-all flex items-center justify-center gap-1.5 whitespace-nowrap min-h-[44px] active:scale-95 ${
                       activeTab === tab.id
                         ? 'bg-slate-900 text-white shadow-md'
@@ -258,7 +342,7 @@ const App: React.FC = () => {
             <div className="bg-white rounded-2xl shadow-soft border border-slate-200/60 overflow-hidden">
               {/* Mobile Cards */}
               <div className="md:hidden flex flex-col gap-3 p-2.5 bg-slate-50">
-                {filteredFunds.map((fund) => (
+                {sortedFunds.map((fund) => (
                   <FundRow
                     key={`mobile-${fund.id}`}
                     fund={fund}
@@ -274,23 +358,37 @@ const App: React.FC = () => {
                   <thead className="bg-slate-50/80 border-b border-slate-100 backdrop-blur-sm">
                     <tr>
                       {[
-                        { label: '基金名称', width: 'w-1/3' },
-                        { label: '现价', width: 'w-1/6' },
-                        { label: '净值', width: 'w-1/6' },
-                        { label: '溢价率', width: 'w-1/6' },
-                        { label: '操作', width: 'w-[100px]' }
+                        { label: '基金名称', width: 'w-1/3', column: 'name' },
+                        { label: '现价', width: 'w-1/6', column: 'price' },
+                        { label: '净值', width: 'w-1/6', column: 'netValue' },
+                        { label: '溢价率', width: 'w-1/6', column: 'premiumRate' },
+                        { label: '操作', width: 'w-[100px]', column: null }
                       ].map((header, i) => (
-                        <th key={i} className={`px-4 py-2.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider ${header.width}`}>
-                          <div className="flex items-center gap-1 cursor-pointer hover:text-slate-600 transition-colors">
+                        <th
+                          key={i}
+                          className={`px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider ${header.width} ${
+                            header.column ? 'cursor-pointer hover:bg-slate-100 transition-colors select-none' : ''
+                          }`}
+                          onClick={() => header.column && handleSort(header.column)}
+                        >
+                          <div className={`flex items-center gap-1 ${sortColumn === header.column ? 'text-indigo-600' : 'text-slate-400'}`}>
                             {header.label}
-                            {i < 4 && <ArrowDown size={12} strokeWidth={2.5}/>}
+                            {header.column && (
+                              <div className="flex flex-col">
+                                {sortColumn === header.column && sortDirection === 'asc' ? (
+                                  <ArrowUp size={10} strokeWidth={2.5} />
+                                ) : (
+                                  <ArrowDown size={10} strokeWidth={2.5} />
+                                )}
+                              </div>
+                            )}
                           </div>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-50">
-                    {filteredFunds.map((fund) => (
+                    {sortedFunds.map((fund) => (
                       <FundRow
                         key={`desktop-${fund.id}`}
                         fund={fund}
@@ -302,7 +400,7 @@ const App: React.FC = () => {
                 </table>
               </div>
 
-              {filteredFunds.length === 0 && (
+              {sortedFunds.length === 0 && (
                  <div className="p-12 text-center flex flex-col items-center gap-3">
                     <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
                       <LayoutDashboard size={24} />

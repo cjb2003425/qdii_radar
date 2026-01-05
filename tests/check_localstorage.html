@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Check localStorage for Fund 161129</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .section {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+        }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .info { color: blue; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        pre {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 localStorage Diagnostic for Fund 161129</h1>
+
+    <div class="section">
+        <h3>Current State</h3>
+        <div id="current-state"></div>
+    </div>
+
+    <div class="section">
+        <h3>Actions</h3>
+        <button onclick="checkLocalStorage()">🔍 Check localStorage</button>
+        <button onclick="removeFromLocalStorage()">🗑️ Remove 161129 from localStorage</button>
+        <button onclick="clearAllFunds()">⚠️ Clear All Funds (Reset)</button>
+        <button onclick="refreshPage()">🔄 Refresh Page</button>
+    </div>
+
+    <div class="section">
+        <h3>Details</h3>
+        <div id="details"></div>
+    </div>
+
+    <script>
+        const FUND_CODE = '161129';
+        const FUND_NAME = '易方达原油A类人民币';
+        const USER_FUNDS_KEY = 'user_funds';
+
+        function checkLocalStorage() {
+            const details = document.getElementById('details');
+            const state = document.getElementById('current-state');
+
+            try {
+                const stored = localStorage.getItem(USER_FUNDS_KEY);
+
+                if (!stored) {
+                    state.innerHTML = '<p class="error">No funds found in localStorage</p>';
+                    return;
+                }
+
+                const funds = JSON.parse(stored);
+
+                // Find fund 161129
+                const fund161129 = funds.find(f => f.code === FUND_CODE);
+
+                if (fund161129) {
+                    state.innerHTML = `
+                        <p class="error">Fund ${FUND_CODE} (${FUND_NAME}) FOUND in localStorage!</p>
+                        <p><strong>Total funds in localStorage:</strong> ${funds.length}</p>
+                        <p class="info">This is why the fund reappears after refresh.</p>
+                    `;
+
+                    details.innerHTML = `
+                        <h4>Fund Details:</h4>
+                        <pre>${JSON.stringify(fund161129, null, 2)}</pre>
+
+                        <h4>All Fund Codes:</h4>
+                        <pre>${funds.map(f => f.code).join(', ')}</pre>
+                    `;
+                } else {
+                    state.innerHTML = `
+                        <p class="success">Fund ${FUND_CODE} NOT found in localStorage!</p>
+                        <p><strong>Total funds in localStorage:</strong> ${funds.length}</p>
+                        <p class="info">The fund should not reappear after refresh.</p>
+                    `;
+
+                    details.innerHTML = `
+                        <h4>All Fund Codes:</h4>
+                        <pre>${funds.map(f => f.code).join(', ')}</pre>
+                    `;
+                }
+            } catch (error) {
+                state.innerHTML = `<p class="error">Error reading localStorage: ${error.message}</p>`;
+            }
+        }
+
+        function removeFromLocalStorage() {
+            try {
+                const stored = localStorage.getItem(USER_FUNDS_KEY);
+
+                if (!stored) {
+                    alert('No funds found in localStorage');
+                    return;
+                }
+
+                const funds = JSON.parse(stored);
+                const originalLength = funds.length;
+
+                // Remove fund 161129
+                const filteredFunds = funds.filter(f => f.code !== FUND_CODE);
+
+                if (filteredFunds.length === originalLength) {
+                    alert(`Fund ${FUND_CODE} was not found in localStorage`);
+                    return;
+                }
+
+                // Save back to localStorage
+                localStorage.setItem(USER_FUNDS_KEY, JSON.stringify(filteredFunds));
+
+                alert(`Success! Removed fund ${FUND_CODE} from localStorage.\n\nFunds before: ${originalLength}\nFunds after: ${filteredFunds.length}`);
+
+                // Refresh display
+                checkLocalStorage();
+
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        function clearAllFunds() {
+            if (!confirm('⚠️ This will delete ALL funds from localStorage and reset to default preset funds. Are you sure?')) {
+                return;
+            }
+
+            try {
+                // Clear the user_funds
+                localStorage.removeItem(USER_FUNDS_KEY);
+
+                // Clear the initialized flag so it will re-initialize with preset funds
+                localStorage.removeItem('funds_initialized');
+
+                alert('Cleared! Page will now reload and initialize with default preset funds.');
+
+                setTimeout(() => {
+                    location.href = location.href; // Full refresh
+                }, 1000);
+
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        function refreshPage() {
+            location.href = location.href;
+        }
+
+        // Auto-check on page load
+        window.onload = function() {
+            checkLocalStorage();
+        };
+    </script>
+</body>
+</html>
