@@ -41,10 +41,11 @@ QDII Fund Radar is a real-time Chinese fund tracking application that monitors N
 - `services/fundApiService.ts`: Centralized API calls with retry logic for fund operations (lookup, add, delete)
 
 **React Components**:
-- `components/ControlPanel.tsx`: Main monitoring control panel with toggle switches (monitor on/off, trading hours filter, check interval), system health display, market overview (NASDAQ, S&P 500, average premium, exchange-traded count)
-- `components/FundRow.tsx`: Individual fund display with monitoring toggle button (persists to database), settings button to open FundTriggerSettings modal, separate desktop (table row) and mobile (card) views
-- `components/FundManager.tsx`: Floating UI for adding/removing custom funds, real-time fund name resolution via backend API, automatic persistence to both localStorage and funds.json
-- `components/FundTriggerSettings.tsx`: Modal for configuring per-fund notification triggers (premium_high, premium_low, limit_change), trigger CRUD operations with backend API
+- `components/ControlPanel.tsx`: Main monitoring control panel with toggle switches, system health display, market overview
+- `components/FundRow.tsx`: Individual fund display with monitoring toggle, settings button, separate desktop/mobile views
+- `components/FundManager.tsx`: Floating UI for adding/removing custom funds with real-time fund name resolution
+- `components/FundTriggerSettings.tsx`: Modal for configuring per-fund notification triggers
+- `components/Footer.tsx`: Application footer with information
 
 **UI Architecture**:
 - `App.tsx`: Uses `max-w-6xl` container for wider layout, implements tab-based filtering (全部/纳斯达克/场内基金), separates mobile and desktop rendering to avoid HTML validation errors, handles monitoring toggle with database persistence
@@ -76,6 +77,29 @@ npm run build
 
 # Kill backend if needed
 lsof -ti:8088 | xargs kill -9
+```
+
+### Running Tests
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Install test dependencies (first time only)
+pip install pytest pytest-asyncio httpx boto3 playwright pytest-playwright
+playwright install chromium
+
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test file
+python -m pytest tests/test_purchase_limit_002732.py -v
+python -m pytest tests/test_delete_fund_161129.py -v
+
+# Run frontend test (Playwright)
+python tests/frontend_delete_fund_simple.py
+
+# Run with detailed output
+python -m pytest tests/test_delete_fund_161129.py -v -s
 ```
 
 ### Backend API Testing
@@ -195,9 +219,27 @@ curl -s "https://push2.eastmoney.com/api/qt/ulist.np/get?secids=0.159659&fields=
 
 ### Fund Deletion Behavior
 
+**Critical: localStorage Cleanup** - When deleting a fund, you MUST remove it from both backend AND localStorage:
+
+```typescript
+// In handleDelete function
+if (result.success) {
+  console.log(`✅ Fund ${fundToDelete.code} deleted from backend`);
+
+  // CRITICAL: Also remove from localStorage to prevent reappearance after refresh
+  const { removeUserFund } = await import('./services/userFundService');
+  const removed = removeUserFund(fundToDelete.code);
+  if (removed) {
+    console.log(`✅ Fund ${fundToDelete.code} removed from localStorage`);
+  }
+}
+```
+
+**Why This Matters**: If you only delete from backend, the fund will reappear after page refresh because localStorage still contains it. The frontend merges funds from both sources.
+
 **FundManager Deletion**: Temporary, UI-only, removes from localStorage
 **FundList Deletion**: Permanent, calls backend DELETE API, removes from funds.json
-- App.tsx handleDelete: Always calls `DELETE /api/fund/{code}` before removing from state
+- App.tsx handleDelete: Always calls `DELETE /api/fund/{code}` then `removeUserFund()`
 - Includes confirmation dialog with fund details
 - Database also removes fund from `monitored_funds` table
 
@@ -243,6 +285,42 @@ This pattern is used in `services/fundApiService.ts` for lookup and add operatio
 **FundTriggerSettings**: Uses default export, not named export
 - ✅ `import FundTriggerSettings from './FundTriggerSettings';`
 - ❌ `import { FundTriggerSettings } from './FundTriggerSettings';`
+
+### Column Sorting Implementation
+
+**Default Sorting Behavior**:
+- Initial page load: Sorts by NAV percentage change descending (`netValue` column, `priceChangePercent` field)
+- 全部基金 tab: NAV% descending
+- 纳斯达克 tab: NAV% descending
+- 场内基金 tab: Premium rate descending
+
+**Sorting Implementation** (App.tsx):
+```typescript
+const [sortColumn, setSortColumn] = useState<string | null>('netValue');
+const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+// All numeric columns sort by PERCENTAGE CHANGE, not absolute values:
+switch (sortColumn) {
+  case 'price': aValue = a.priceChangePercent; break;      // NOT a.price
+  case 'netValue': aValue = a.netValueChangePercent; break;  // NOT a.netValue
+  case 'premiumRate': aValue = a.premiumRate; break;
+  case 'name': aValue = a.name; break;  // Only text column sorts by value
+}
+
+// Click handler with tab-specific defaults
+const handleTabChange = (tabId: string) => {
+  setActiveTab(tabId);
+  if (tabId === 'all' || tabId === 'nasdaq') {
+    setSortColumn('netValue');  // NAV% descending
+    setSortDirection('desc');
+  } else if (tabId === 'exchange') {
+    setSortColumn('premiumRate');  // Premium% descending
+    setSortDirection('desc');
+  }
+};
+```
+
+**Critical**: When adding sortable columns, determine if it should sort by percentage change or absolute value. Users expect percentage-based sorting for price/NAV columns to quickly identify best/worst performers.
 
 ## Data Structures
 
