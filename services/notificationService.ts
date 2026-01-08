@@ -93,3 +93,34 @@ export async function toggleTrigger(
 ): Promise<FundTrigger> {
   return updateTrigger(fundCode, triggerId, { enabled });
 }
+
+/**
+ * Get monitoring status for a specific fund
+ */
+export async function getFundMonitoringStatus(fundCode: string): Promise<{ fund_code: string; enabled: boolean }> {
+  const response = await fetch(`${API_CONFIG.notifications}/monitored-funds/${fundCode}`);
+  if (!response.ok) {
+    throw new Error(`Failed to get monitoring status for fund ${fundCode}`);
+  }
+  return await response.json();
+}
+
+/**
+ * Update monitoring status for a specific fund
+ */
+export async function updateFundMonitoringStatus(
+  fundCode: string,
+  enabled: boolean
+): Promise<{ fund_code: string; enabled: boolean }> {
+  const response = await fetch(`${API_CONFIG.notifications}/monitored-funds/${fundCode}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to update monitoring status for fund ${fundCode}`);
+  }
+
+  return await response.json();
+}

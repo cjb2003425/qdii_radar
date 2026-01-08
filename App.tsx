@@ -6,6 +6,7 @@ import { Footer } from './components/Footer';
 import { Fund } from './types';
 import { fetchQDIIFunds } from './services/fundService';
 import { initializeFunds } from './services/userFundService';
+import { updateFundMonitoringStatus } from './services/notificationService';
 import { FundData } from './types/fund';
 import { ArrowDown, ArrowUp, RefreshCcw, LayoutDashboard } from 'lucide-react';
 
@@ -209,28 +210,19 @@ const App: React.FC = () => {
     if (!fundToToggle) return;
 
     const newEnabledState = !fundToToggle.isMonitorEnabled;
+    console.log(`🔄 Toggling fund ${fundToToggle.code}: ${fundToToggle.isMonitorEnabled} → ${newEnabledState}`);
 
     try {
-      // Call backend API to persist the change
-      const baseUrl = 'http://127.0.0.1:8088/api/notifications';
-      const response = await fetch(`${baseUrl}/monitored-funds/${fundToToggle.code}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: newEnabledState })
-      });
+      // Use the notification service to update monitoring status
+      const result = await updateFundMonitoringStatus(fundToToggle.code, newEnabledState);
+      console.log(`✅ Fund ${fundToToggle.code} monitoring ${newEnabledState ? 'enabled' : 'disabled'}`, result);
 
-      if (response.ok) {
-        const result = await response.json();
-        console.log(`✅ Fund ${fundToToggle.code} monitoring ${newEnabledState ? 'enabled' : 'disabled'}`);
-      } else {
-        console.error(`❌ Failed to update monitoring status: ${response.statusText}`);
-      }
+      // Only update local state if backend update succeeds
+      setFunds(funds.map(f => f.id === id ? { ...f, isMonitorEnabled: newEnabledState } : f));
     } catch (error) {
       console.error('❌ Failed to update fund monitoring in backend:', error);
+      alert(`更新监控状态失败: ${error instanceof Error ? error.message : '请检查网络连接'}`);
     }
-
-    // Update local state
-    setFunds(funds.map(f => f.id === id ? { ...f, isMonitorEnabled: newEnabledState } : f));
   };
 
   const handleFundAdded = async (code: string, name: string) => {
