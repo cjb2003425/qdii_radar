@@ -63,7 +63,8 @@ QDII Fund Radar is a real-time Chinese fund tracking application that monitors N
 - `notification_history`: Alert history (fund_code, fund_name, alert_type, old_value, new_value, sent_at, recipient_email)
 - `email_recipients`: Email notification recipients
 - `fund_states`: Historical fund data snapshots
-- `historical_nav_cache`: 1-year NAV data cache with 24-hour expiration (fund_code, nav_1_year_ago, percentage_change, days_calculated, cached_at)
+- `historical_nav_cache`: 1-year cumulative NAV data cache with 24-hour expiration (fund_code, nav_1_year_ago, percentage_change, days_calculated, cached_at)
+  - Uses cumulative NAV (累计净值) to account for dividend distributions
 
 ## Development Commands
 
@@ -188,7 +189,7 @@ DELETE FROM historical_nav_cache;
 DELETE FROM historical_nav_cache WHERE fund_code = '159659';
 ```
 
-**Historical Cache Note**: The `historical_nav_cache` table stores 1-year NAV performance data with 24-hour expiration. Cache is automatically refreshed when expired. Manually clear cache to force immediate refresh.
+**Historical Cache Note**: The `historical_nav_cache` table stores 1-year cumulative NAV performance data with 24-hour expiration. Uses cumulative NAV (累计净值) to account for dividend distributions. Cache is automatically refreshed when expired. Manually clear cache to force immediate refresh.
 
 ### Debugging Fund Data
 ```bash
@@ -336,7 +337,7 @@ This pattern is used in `services/fundApiService.ts` for lookup and add operatio
 - 全部基金 tab: NAV% descending
 - 纳斯达克 tab: NAV% descending
 - 场内基金 tab: Premium rate descending
-- **1年期 (1-Year)**: Sorts by NAV-based 1-year percentage change
+- **1年期 (1-Year)**: Sorts by cumulative NAV-based 1-year percentage change (accounts for dividends)
 
 **Sorting Implementation** (App.tsx):
 ```typescript
@@ -348,7 +349,7 @@ switch (sortColumn) {
   case 'price': aValue = a.priceChangePercent; break;      // NOT a.price
   case 'netValue': aValue = a.netValueChangePercent; break;  // NOT a.netValue
   case 'premiumRate': aValue = a.premiumRate; break;
-  case 'oneYearChange':  // 1-year NAV percentage change
+  case 'oneYearChange':  // 1-year cumulative NAV percentage change (accounts for dividends)
     aValue = a.oneYearChangeAvailable ? a.oneYearChange || 0 : -999;
     bValue = b.oneYearChangeAvailable ? b.oneYearChange || 0 : -999;
     break;
@@ -411,7 +412,7 @@ const handleTabChange = (tabId: string) => {
   isWatchlisted: boolean;
   isMonitorEnabled?: boolean;  // Monitoring status from database (CRITICAL: persists to DB)
   isUserAdded?: boolean; // User-added vs preset fund
-  oneYearChange?: number;  // 1-year NAV percentage change
+  oneYearChange?: number;  // 1-year cumulative NAV percentage change (accounts for dividends)
   oneYearChangeAvailable?: boolean;  // True if historical data exists
 }
 ```
@@ -422,7 +423,8 @@ const handleTabChange = (tabId: string) => {
 - `valuation > 0` → Fund is exchange-traded (LOF or ETF) with real-time trading price
 - `valuation === 0` → Fund is NAV-based only (no trading price, like ETF联接 funds)
 - `marketPrice > 0` → Fund has NAV data (all funds should have this)
-- `oneYearChange` → NAV-based 1-year performance, calculated as (current_NAV - NAV_1yr_ago) / NAV_1yr_ago × 100
+- `oneYearChange` → Cumulative NAV-based 1-year performance, calculated as (current_cumulative_NAV - cumulative_NAV_1yr_ago) / cumulative_NAV_1yr_ago × 100
+  - Uses cumulative NAV (累计净值) to account for dividend distributions, not unit NAV (单位净值)
 
 ### Backend Response Structure
 - Returns array of funds with NAV in `marketPrice` field
