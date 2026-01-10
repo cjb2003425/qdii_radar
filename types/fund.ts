@@ -18,4 +18,6 @@ export interface FundData {
   isUserAdded?: boolean;
   isMonitorEnabled?: boolean;  // Monitoring status from backend database
   monitoringEnabled?: boolean;  // Deprecated: use isMonitorEnabled instead
+  oneYearChange?: number;  // 1-year percentage change
+  oneYearChangeAvailable?: boolean;  // True if 1-year data exists
 }

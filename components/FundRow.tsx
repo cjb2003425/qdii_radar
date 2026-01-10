@@ -51,6 +51,8 @@ export const FundRow: React.FC<FundRowProps> = ({ fund, onDelete, onToggle }) =>
     premiumRate: fund.premiumRate,
     limitText: fund.limitTag || '—',
     isWatchlisted: false,
+    oneYearChange: fund.oneYearChange,
+    oneYearChangeAvailable: fund.oneYearChangeAvailable,
   };
 
   return (
@@ -106,6 +108,15 @@ export const FundRow: React.FC<FundRowProps> = ({ fund, onDelete, onToggle }) =>
           <div className={`inline-flex items-center px-2 py-0.5 rounded-md text-[13px] font-bold font-mono tabular-nums ${getBgColor(fund.premiumRate)} ${getColor(fund.premiumRate)}`}>
             {formatPercent(fund.premiumRate)}
           </div>
+        </td>
+        <td className="py-2.5 px-4 align-middle">
+          {fund.oneYearChangeAvailable ? (
+            <span className={`text-[13px] font-bold font-mono tabular-nums ${getColor(fund.oneYearChange || 0)}`}>
+              {formatPercent(fund.oneYearChange || 0)}
+            </span>
+          ) : (
+            <span className="text-slate-300 text-[13px]">—</span>
+          )}
         </td>
         <td className="py-2.5 px-4 align-middle">
           <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -199,6 +210,18 @@ export const FundRow: React.FC<FundRowProps> = ({ fund, onDelete, onToggle }) =>
                     <span className="text-[8px] text-slate-400 mb-0.5">溢价率</span>
                      <div className={`font-bold font-mono text-[13px] mt-0.5 ${getColor(fund.premiumRate)}`}>{formatPercent(fund.premiumRate)}</div>
                  </div>
+            </div>
+
+            {/* 1-Year Change - Separate Row for Mobile */}
+            <div className="mt-1.5 flex items-center justify-between bg-slate-50 rounded-lg px-2 py-1.5 border border-slate-100">
+              <span className="text-[8px] text-slate-400">1年期</span>
+              {fund.oneYearChangeAvailable ? (
+                <span className={`text-[11px] font-bold font-mono ${getColor(fund.oneYearChange || 0)}`}>
+                  {formatPercent(fund.oneYearChange || 0)}
+                </span>
+              ) : (
+                <span className="text-[11px] text-slate-300">—</span>
+              )}
             </div>
         </div>
       </div>

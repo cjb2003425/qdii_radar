@@ -5,7 +5,6 @@ import FundManager from './components/FundManager';
 import { Footer } from './components/Footer';
 import { Fund } from './types';
 import { fetchQDIIFunds } from './services/fundService';
-import { initializeFunds } from './services/userFundService';
 import { updateFundMonitoringStatus } from './services/notificationService';
 import { FundData } from './types/fund';
 import { ArrowDown, ArrowUp, RefreshCcw, LayoutDashboard } from 'lucide-react';
@@ -31,6 +30,8 @@ const mapFundDataToFund = (data: FundData): Fund => {
     limitStatus: getLimitStatus(data.limitText),
     isMonitorEnabled: data.isMonitorEnabled || false,
     hasSettings: true,
+    oneYearChange: data.oneYearChange || 0,
+    oneYearChangeAvailable: data.oneYearChangeAvailable || false,
   };
 };
 
@@ -95,6 +96,11 @@ const App: React.FC = () => {
         aValue = a.premiumRate;
         bValue = b.premiumRate;
         break;
+      case 'oneYearChange':
+        // Funds without data sort to bottom
+        aValue = a.oneYearChangeAvailable ? a.oneYearChange || 0 : -999;
+        bValue = b.oneYearChangeAvailable ? b.oneYearChange || 0 : -999;
+        break;
       default:
         return 0;
     }
@@ -136,9 +142,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const loadFunds = async () => {
       try {
-        // Initialize preset funds
-        initializeFunds();
-
+        // Fetch funds from backend (backend is the source of truth)
         const data = await fetchQDIIFunds();
         const mappedFunds = data.map(mapFundDataToFund);
         setFunds(mappedFunds);
@@ -350,10 +354,11 @@ const App: React.FC = () => {
                   <thead className="bg-slate-50/80 border-b border-slate-100 backdrop-blur-sm">
                     <tr>
                       {[
-                        { label: '基金名称', width: 'w-1/3', column: 'name' },
-                        { label: '现价', width: 'w-1/6', column: 'price' },
-                        { label: '净值', width: 'w-1/6', column: 'netValue' },
-                        { label: '溢价率', width: 'w-1/6', column: 'premiumRate' },
+                        { label: '基金名称', width: 'w-[28%]', column: 'name' },
+                        { label: '现价', width: 'w-[14%]', column: 'price' },
+                        { label: '净值', width: 'w-[14%]', column: 'netValue' },
+                        { label: '溢价率', width: 'w-[14%]', column: 'premiumRate' },
+                        { label: '1年期', width: 'w-[14%]', column: 'oneYearChange' },
                         { label: '操作', width: 'w-[100px]', column: null }
                       ].map((header, i) => (
                         <th

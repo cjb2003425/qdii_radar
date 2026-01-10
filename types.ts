@@ -11,6 +11,8 @@ export interface Fund {
   limitStatus: 'warning' | 'danger' | 'neutral' | 'info'; // Determines badge color
   isMonitorEnabled: boolean;
   hasSettings?: boolean;
+  oneYearChange?: number;  // 1-year percentage change
+  oneYearChangeAvailable?: boolean;  // True if 1-year data exists
 }
 
 export interface StatItem {

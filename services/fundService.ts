@@ -146,25 +146,14 @@ const fetchClientSide = async (): Promise<FundData[]> => {
 // --- MAIN EXPORT ---
 
 export const fetchQDIIFunds = async (): Promise<FundData[]> => {
-  const userFunds = getUserFunds();
+  console.log("📊 fetchQDIIFunds: Fetching from backend (source of truth)");
 
-  console.log("📊 fetchQDIIFunds: userFunds from localStorage =", userFunds.length, "funds");
-
-  // getUserFunds already includes all preset funds (from initializeFunds) + user-added funds
-  if (userFunds.length === 0) {
-    console.warn("⚠️ No funds found in localStorage. Please clear localStorage and refresh.");
-    return [];
-  }
-
-  const fundCodes = userFunds.map(f => f.code);
-  console.log("📋 Fetching codes:", fundCodes.join(','));
-
-  // 1. Try Backend for data
+  // 1. Try Backend for data (backend is the source of truth)
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_CONFIG.PROXY_TIMEOUT);
 
-    const backendUrl = `${API_CONFIG.funds}?codes=${fundCodes.join(',')}`;
+    const backendUrl = API_CONFIG.funds;
     console.log("🌐 Requesting:", backendUrl);
 
     const response = await fetch(backendUrl, {
@@ -177,12 +166,12 @@ export const fetchQDIIFunds = async (): Promise<FundData[]> => {
 
     if (response.ok) {
       console.log("✅ Using Python Backend Data");
-      let data = await response.json();
-      console.log("📦 Raw backend data:", data.length, "funds");
+      const data = await response.json();
+      console.log("📦 Backend returned:", data.length, "funds");
 
-      // Merge backend data with user funds
-      data = mergeUserFundsWithBackendData(userFunds, data);
-      console.log("✨ Merged data:", data.length, "funds");
+      // Sync localStorage with backend data
+      syncLocalStorageWithBackend(data);
+
       return data;
     } else {
       console.warn("⚠️ Backend response not OK:", response.status);
@@ -191,11 +180,57 @@ export const fetchQDIIFunds = async (): Promise<FundData[]> => {
     console.log("❌ Python Backend unavailable, using client-side fallback.", error);
   }
 
-  // 2. Fallback to Client Side
-  console.log("🔄 Falling back to client-side data");
+  // 2. Fallback to localStorage + Client Side
+  console.log("🔄 Falling back to localStorage + client-side data");
+  const userFunds = getUserFunds();
+
+  if (userFunds.length === 0) {
+    console.warn("⚠️ No funds found in localStorage. Initializing with preset funds.");
+    initializeFunds();
+    return [];
+  }
+
   const clientData = await fetchClientSide();
   return mergeUserFundsWithBackendData(userFunds, clientData);
 };
+
+/**
+ * Sync localStorage with backend data to keep them consistent
+ */
+function syncLocalStorageWithBackend(backendData: FundData[]): void {
+  try {
+    const currentLocalStorage = getUserFunds();
+    const backendCodes = new Set(backendData.map(f => f.code));
+
+    // Funds in backend but not in localStorage - add them
+    const missingInLocalStorage = backendData.filter(f => !currentLocalStorage.some(lf => lf.code === f.code));
+
+    // Funds in localStorage but not in backend - remove them (unless they're user-added temporarily)
+    const extraInLocalStorage = currentLocalStorage.filter(lf => !backendCodes.has(lf.code));
+
+    if (missingInLocalStorage.length > 0 || extraInLocalStorage.length > 0) {
+      console.log("🔄 Syncing localStorage with backend:");
+
+      if (missingInLocalStorage.length > 0) {
+        console.log(`  Adding ${missingInLocalStorage.length} funds from backend to localStorage`);
+        missingInLocalStorage.forEach(fund => {
+          addUserFund(fund.code, fund.name);
+        });
+      }
+
+      if (extraInLocalStorage.length > 0) {
+        console.log(`  Removing ${extraInLocalStorage.length} funds from localStorage (not in backend)`);
+        extraInLocalStorage.forEach(fund => {
+          removeUserFund(fund.code);
+        });
+      }
+
+      console.log("✅ LocalStorage synced with backend");
+    }
+  } catch (error) {
+    console.error("❌ Failed to sync localStorage with backend:", error);
+  }
+}
 
 function mergeUserFundsWithBackendData(userFunds: ReturnType<typeof getUserFunds>, backendData: FundData[]): FundData[] {
   const backendMap = new Map(backendData.map(fund => [fund.code, fund]));

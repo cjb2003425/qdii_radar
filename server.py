@@ -527,10 +527,221 @@ def fetch_nav_from_akshare(code: str) -> tuple:
         
         logger.warning(f"AKShare: No NAV data found for {code}")
         return None, None
-        
+
     except Exception as e:
         logger.warning(f"AKShare failed to fetch NAV for {code}: {e}")
         return None, None
+
+
+# ============================================================================
+# Historical NAV Data Fetching (for 1-Year Percentage Change)
+# ============================================================================
+
+HISTORICAL_CACHE_DURATION = 86400  # 24 hours
+
+
+def get_historical_cache(session, fund_code: str):
+    """Get cached historical NAV data from database."""
+    from notifications.models import HistoricalNavCache
+    from datetime import datetime, timedelta
+
+    try:
+        cached = session.query(HistoricalNavCache).filter_by(fund_code=fund_code).first()
+        if cached:
+            # Check if cache is still valid (24 hours)
+            cache_age = (datetime.utcnow() - cached.cached_at).total_seconds()
+            if cache_age < HISTORICAL_CACHE_DURATION:
+                logger.debug(f"Using cached historical data for {fund_code} ({cache_age:.0f}s old)")
+                return {
+                    'percentage_change': cached.percentage_change,
+                    'days_calculated': cached.days_calculated
+                }
+            else:
+                logger.debug(f"Historical cache expired for {fund_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to get historical cache for {fund_code}: {e}")
+        return None
+
+
+def set_historical_cache(session, fund_code: str, nav_1_year_ago: float, percentage_change: float, days_calculated: int):
+    """Cache historical NAV data in database."""
+    from notifications.models import HistoricalNavCache
+
+    try:
+        existing = session.query(HistoricalNavCache).filter_by(fund_code=fund_code).first()
+        if existing:
+            existing.nav_1_year_ago = nav_1_year_ago
+            existing.percentage_change = percentage_change
+            existing.days_calculated = days_calculated
+            existing.cached_at = datetime.utcnow()
+        else:
+            new_cache = HistoricalNavCache(
+                fund_code=fund_code,
+                nav_1_year_ago=nav_1_year_ago,
+                percentage_change=percentage_change,
+                days_calculated=days_calculated
+            )
+            session.add(new_cache)
+        session.commit()
+        logger.info(f"Cached historical data for {fund_code}: {percentage_change:.2f}% over {days_calculated} days")
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to cache historical data for {fund_code}: {e}")
+
+
+def fetch_historical_nav_eastmoney(code: str, days: int = 365) -> dict:
+    """
+    Fetch historical NAV data from AKShare.
+
+    Returns:
+        {
+            'nav_1_year_ago': float,
+            'percentage_change': float,
+            'days_found': int
+        }
+        or None if fetch fails.
+    """
+    from datetime import datetime, timedelta
+
+    try:
+        # Use AKShare to get historical NAV data
+        # Data is returned with OLDEST first, NEWEST last
+        df = ak.fund_open_fund_info_em(symbol=code, indicator="单位净值走势", period="三年")
+
+        if df is not None and not df.empty and len(df) > 1:
+            # Convert date strings to datetime for comparison
+            df['净值日期_dt'] = pd.to_datetime(df['净值日期'])
+
+            # Get current NAV from the LAST row (newest)
+            nav_current = float(df.iloc[-1]['单位净值'])
+            current_date = df.iloc[-1]['净值日期']
+
+            # Find NAV from approximately 1 year ago
+            one_year_ago = datetime.now() - timedelta(days=days)
+            df['time_diff'] = abs(df['净值日期_dt'] - one_year_ago)
+            closest_idx = df['time_diff'].idxmin()
+            nav_1_year_ago = float(df.loc[closest_idx, '单位净值'])
+            past_date = df.loc[closest_idx, '净值日期']
+
+            if nav_1_year_ago > 0:
+                # Calculate percentage change: (current - old) / old * 100
+                # The BASE is nav_1_year_ago (NAV from 1 year ago)
+                percentage_change = ((nav_current - nav_1_year_ago) / nav_1_year_ago) * 100
+
+                logger.info(f"Fetched historical NAV for {code}: {nav_1_year_ago:.4f} ({past_date}) → {nav_current:.4f} ({current_date}) = {percentage_change:.2f}%")
+                return {
+                    'nav_1_year_ago': nav_1_year_ago,
+                    'percentage_change': round(percentage_change, 2),
+                    'days_found': days
+                }
+
+        logger.warning(f"Could not fetch historical NAV data for {code}")
+        return None
+
+    except Exception as e:
+        logger.warning(f"Failed to fetch historical NAV for {code}: {e}")
+        return None
+
+
+def fetch_historical_etf_price(code: str, days: int = 365) -> dict:
+    """
+    Fetch historical trading price for ETF/LOF funds using AKShare.
+
+    Returns:
+        {
+            'price_1_year_ago': float,
+            'percentage_change': float,
+            'days_found': int
+        }
+        or None if fetch fails.
+    """
+    from datetime import datetime, timedelta
+
+    try:
+        end_date = datetime.now().strftime('%Y%m%d')
+        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y%m%d')
+
+        df = ak.fund_etf_hist_em(
+            symbol=code,
+            period='daily',
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        if df is not None and not df.empty and len(df) > 1:
+            # Use closing price from oldest row
+            price_1_year_ago = df.iloc[-1]['收盘']
+            current_price = df.iloc[0]['收盘']
+            percentage_change = ((current_price - price_1_year_ago) / price_1_year_ago) * 100
+
+            logger.info(f"Fetched historical ETF price for {code}: {percentage_change:.2f}% over {len(df)} days")
+            return {
+                'price_1_year_ago': price_1_year_ago,
+                'percentage_change': round(percentage_change, 2),
+                'days_found': len(df)
+            }
+
+    except Exception as e:
+        logger.warning(f"Failed to fetch historical ETF price for {code}: {e}")
+        return None
+
+
+def get_one_year_change(code: str, is_exchange_traded: bool) -> dict:
+    """
+    Get 1-year percentage change for a fund based on NAV, using cache if available.
+
+    Args:
+        code: Fund code
+        is_exchange_traded: True if fund is ETF/LOF (ignored - always uses NAV)
+
+    Returns:
+        {
+            'percentage_change': float or 0,
+            'available': bool
+        }
+    """
+    from notifications.models import get_db
+
+    session = get_db()
+    try:
+        # Check cache first
+        cached = get_historical_cache(session, code)
+        if cached:
+            return {
+                'percentage_change': cached['percentage_change'],
+                'available': True
+            }
+
+        # Cache miss or expired - fetch fresh NAV data (always use NAV, not trading price)
+        hist_data = fetch_historical_nav_eastmoney(code)
+
+        if hist_data:
+            # Cache the result
+            set_historical_cache(
+                session,
+                code,
+                hist_data.get('nav_1_year_ago', 0),
+                hist_data['percentage_change'],
+                hist_data['days_found']
+            )
+            return {
+                'percentage_change': hist_data['percentage_change'],
+                'available': True
+            }
+        else:
+            return {
+                'percentage_change': 0,
+                'available': False
+            }
+    except Exception as e:
+        logger.error(f"Error getting 1-year change for {code}: {e}")
+        return {
+            'percentage_change': 0,
+            'available': False
+        }
+    finally:
+        session.close()
 
 
 async def fetch_quotes_for_codes(client: httpx.AsyncClient, codes: List[str]) -> List[Dict]:
@@ -1014,7 +1225,9 @@ async def get_qdii_funds(codes: str = None):
             "marketPrice": 0,
             "marketPriceRate": 0,
             "limitText": "—",
-            "isWatchlisted": False
+            "isWatchlisted": False,
+            "oneYearChange": 0,
+            "oneYearChangeAvailable": False
         }
 
     for quote in quotes:
@@ -1087,6 +1300,13 @@ async def get_qdii_funds(codes: str = None):
             fund["isMonitorEnabled"] = False
     finally:
         session.close()
+
+    # Add 1-year percentage change data (use non-blocking approach for performance)
+    for fund in funds:
+        is_exchange_traded = fund.get("valuation", 0) > 0
+        one_year_data = get_one_year_change(fund["code"], is_exchange_traded)
+        fund["oneYearChange"] = one_year_data["percentage_change"]
+        fund["oneYearChangeAvailable"] = one_year_data["available"]
 
     funds.sort(key=lambda x: (-x["marketPrice"] == 0, -x["premiumRate"]))
 
@@ -1179,13 +1399,25 @@ async def get_market_indices():
     except Exception as e:
         logger.error(f"Error fetching market indices from Eastmoney: {e}")
 
+    # Calculate fund statistics dynamically
+    funds = await get_qdii_funds()
+    total_funds = len(funds)
+    exchange_traded = [f for f in funds if f.get("valuation", 0) > 0]
+    exchange_traded_count = len(exchange_traded)
+
+    # Calculate average premium rate (only for exchange-traded funds)
+    premiums = [f.get("premiumRate", 0) for f in exchange_traded]
+    avg_premium = round(sum(premiums) / len(premiums), 2) if premiums else 0
+
+    logger.info(f"Fund statistics: {exchange_traded_count}/{total_funds} exchange-traded, avg premium: {avg_premium}%")
+
     # Build response
     response_data = {
         "nasdaq": nasdaq_data,
         "sp500": sp500_data,
-        "avg_premium": 0.35,
-        "exchange_traded_count": 12,
-        "total_funds": 39
+        "avg_premium": avg_premium,
+        "exchange_traded_count": exchange_traded_count,
+        "total_funds": total_funds
     }
 
     # Cache the results

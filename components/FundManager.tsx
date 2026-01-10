@@ -64,13 +64,15 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
       }
 
       const fundName = lookupResult.name;
-      const newUserFund = addUserFund(trimmedCode, fundName);
 
-      // 调用后端API将基金添加到funds.json
+      // Call backend API FIRST to add to funds.json
       const addResult = await addFundToBackend(trimmedCode, fundName);
       if (!addResult.success) {
-        console.warn('Failed to add fund to backend, but added to localStorage:', addResult.message);
+        throw new Error(addResult.message || '后端添加基金失败');
       }
+
+      // Only update localStorage after backend confirms
+      const newUserFund = addUserFund(trimmedCode, fundName);
       
       // 清空输入框，但保持弹窗打开状态，允许连续添加
       setCode('');
@@ -106,19 +108,22 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
 
   const handleRemoveFund = async (fundCode: string, isUserAdded: boolean) => {
     if (window.confirm(`确定要删除基金 ${fundCode} 吗？`)) {
-      // 调用后端API从funds.json和监控数据库中删除
-      const deleteResult = await deleteFundFromBackend(fundCode);
+      try {
+        // Call backend API FIRST to delete from funds.json and monitoring database
+        const deleteResult = await deleteFundFromBackend(fundCode);
 
-      // 从localStorage删除（无论后端是否成功）
-      removeUserFund(fundCode);
+        if (!deleteResult.success) {
+          throw new Error(deleteResult.message || '后端删除基金失败');
+        }
 
-      // 如果后端删除失败，警告用户
-      if (!deleteResult.success) {
-        setError(`⚠️ 基金 ${fundCode} 仅从前端删除。后端服务器可能未运行，刷新页面后基金可能重新出现。请确保后端服务运行后再删除。`);
+        // Only update localStorage after backend confirms
+        removeUserFund(fundCode);
+        onFundRemoved?.(fundCode);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : '删除失败';
+        setError(`❌ 删除基金 ${fundCode} 失败: ${errorMessage}`);
         setTimeout(() => setError(''), 5000);
       }
-
-      onFundRemoved?.(fundCode);
     }
   };
 
@@ -147,17 +152,31 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
     if (window.confirm(`确定要删除选中的 ${selectedFunds.size} 只基金吗？`)) {
       const fundCodes = Array.from(selectedFunds);
 
-      // 从localStorage删除所有选中的基金
-      fundCodes.forEach(fundCode => {
-        removeUserFund(fundCode);
-        onFundRemoved?.(fundCode);
-      });
+      try {
+        // Call backend API FIRST to batch delete
+        const results = await batchDeleteFundsFromBackend(fundCodes);
 
-      // 调用后端API批量删除（并行执行）
-      await batchDeleteFundsFromBackend(fundCodes);
+        // Check if any deletions failed
+        const failedCodes = Object.entries(results).filter(([_, result]) => !result.success);
 
-      setSelectedFunds(new Set());
-      setIsBatchMode(false);
+        if (failedCodes.length > 0) {
+          const failedCodeList = failedCodes.map(([code]) => code).join(', ');
+          throw new Error(`以下基金删除失败: ${failedCodeList}`);
+        }
+
+        // Only update localStorage after backend confirms
+        fundCodes.forEach(fundCode => {
+          removeUserFund(fundCode);
+          onFundRemoved?.(fundCode);
+        });
+
+        setSelectedFunds(new Set());
+        setIsBatchMode(false);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : '批量删除失败';
+        setError(`❌ ${errorMessage}`);
+        setTimeout(() => setError(''), 5000);
+      }
     }
   };
 

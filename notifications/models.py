@@ -98,6 +98,20 @@ class FundTrigger(Base):
         return f"<FundTrigger(fund={self.fund_code}, type={self.trigger_type}, threshold={self.threshold_value})>"
 
 
+class HistoricalNavCache(Base):
+    """Cache for historical NAV data to calculate 1-year percentage change."""
+    __tablename__ = 'historical_nav_cache'
+
+    fund_code = Column(String(20), primary_key=True, nullable=False)
+    nav_1_year_ago = Column(Float, nullable=True)  # NAV value from ~1 year ago
+    percentage_change = Column(Float, nullable=False, default=0)  # 1-year percentage change
+    days_calculated = Column(Integer, nullable=False, default=0)  # Actual trading days found
+    cached_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    def __repr__(self):
+        return f"<HistoricalNavCache(code={self.fund_code}, change={self.percentage_change}%, days={self.days_calculated})>"
+
+
 # Database setup
 DATABASE_URL = "sqlite:///data/notifications.db"
 engine = create_engine(
