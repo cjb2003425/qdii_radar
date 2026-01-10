@@ -605,35 +605,49 @@ def fetch_historical_nav_eastmoney(code: str, days: int = 365) -> dict:
     from datetime import datetime, timedelta
 
     try:
-        # Use AKShare to get historical NAV data
+        # Use AKShare to get historical cumulative NAV data
+        # Using cumulative NAV to avoid dividend distribution effects
         # Data is returned with OLDEST first, NEWEST last
-        df = ak.fund_open_fund_info_em(symbol=code, indicator="单位净值走势", period="三年")
+        df = ak.fund_open_fund_info_em(symbol=code, indicator="累计净值走势", period="三年")
 
         if df is not None and not df.empty and len(df) > 1:
             # Convert date strings to datetime for comparison
             df['净值日期_dt'] = pd.to_datetime(df['净值日期'])
 
-            # Get current NAV from the LAST row (newest)
-            nav_current = float(df.iloc[-1]['单位净值'])
-            current_date = df.iloc[-1]['净值日期']
+            # Filter to only get data from approximately the last 'days' (365)
+            # Get the newest date first
+            newest_date = df.iloc[-1]['净值日期_dt']
+            cutoff_date = newest_date - timedelta(days=days + 30)  # Add buffer to ensure we get enough data
 
-            # Find NAV from approximately 1 year ago
-            one_year_ago = datetime.now() - timedelta(days=days)
-            df['time_diff'] = abs(df['净值日期_dt'] - one_year_ago)
-            closest_idx = df['time_diff'].idxmin()
-            nav_1_year_ago = float(df.loc[closest_idx, '单位净值'])
-            past_date = df.loc[closest_idx, '净值日期']
+            # Filter to keep only recent data (within cutoff + buffer)
+            df_filtered = df[df['净值日期_dt'] >= cutoff_date].copy()
+
+            if df_filtered.empty or len(df_filtered) < 2:
+                logger.warning(f"Not enough recent data for {code}")
+                return None
+
+            # Get current cumulative NAV from the LAST row (newest)
+            nav_current = float(df_filtered.iloc[-1]['累计净值'])
+            current_date = df_filtered.iloc[-1]['净值日期']
+
+            # Find cumulative NAV from approximately 1 year ago
+            one_year_ago_target = datetime.now() - timedelta(days=days)
+            df_filtered['time_diff'] = abs(df_filtered['净值日期_dt'] - one_year_ago_target)
+            closest_idx = df_filtered['time_diff'].idxmin()
+            nav_1_year_ago = float(df_filtered.loc[closest_idx, '累计净值'])
+            past_date = df_filtered.loc[closest_idx, '净值日期']
 
             if nav_1_year_ago > 0:
                 # Calculate percentage change: (current - old) / old * 100
                 # The BASE is nav_1_year_ago (NAV from 1 year ago)
                 percentage_change = ((nav_current - nav_1_year_ago) / nav_1_year_ago) * 100
+                days_found = len(df_filtered)
 
-                logger.info(f"Fetched historical NAV for {code}: {nav_1_year_ago:.4f} ({past_date}) → {nav_current:.4f} ({current_date}) = {percentage_change:.2f}%")
+                logger.info(f"Fetched historical cumulative NAV for {code}: {nav_1_year_ago:.4f} ({past_date}) → {nav_current:.4f} ({current_date}) = {percentage_change:.2f}% over {days_found} trading days")
                 return {
                     'nav_1_year_ago': nav_1_year_ago,
                     'percentage_change': round(percentage_change, 2),
-                    'days_found': days
+                    'days_found': days_found
                 }
 
         logger.warning(f"Could not fetch historical NAV data for {code}")
