@@ -25,7 +25,8 @@ QDII Fund Radar is a real-time Chinese fund tracking application that monitors N
 - Fund persistence via POST /api/fund endpoint
 - Global caching for AKShare data (1-hour duration)
 - Background monitoring system with asyncio and SQLite
-- Runs on port 8088 (not 8000 as README suggests)
+- Runs on port **8088** (not 8000 as README suggests)
+- **Important**: README.md mentions port 8000, but actual port is 8088
 
 **Notification System (`notifications/`)**:
 - `models.py`: SQLite database models for triggers, config, history
@@ -51,6 +52,7 @@ QDII Fund Radar is a real-time Chinese fund tracking application that monitors N
 - `App.tsx`: Uses `max-w-6xl` container for wider layout, implements tab-based filtering (全部/纳斯达克/场内基金), separates mobile and desktop rendering to avoid HTML validation errors, handles monitoring toggle with database persistence
 - Responsive design: Mobile-first with `md:` breakpoints for tablet/desktop
 - Tailwind CSS for all styling (no separate CSS files)
+- Frontend runs on port **3000** (Vite dev server), not 3002 as README suggests
 
 ### Database Schema (`data/notifications.db`)
 
@@ -61,6 +63,7 @@ QDII Fund Radar is a real-time Chinese fund tracking application that monitors N
 - `notification_history`: Alert history (fund_code, fund_name, alert_type, old_value, new_value, sent_at, recipient_email)
 - `email_recipients`: Email notification recipients
 - `fund_states`: Historical fund data snapshots
+- `historical_nav_cache`: 1-year NAV data cache with 24-hour expiration (fund_code, nav_1_year_ago, percentage_change, days_calculated, cached_at)
 
 ## Development Commands
 
@@ -77,7 +80,17 @@ npm run build
 
 # Kill backend if needed
 lsof -ti:8088 | xargs kill -9
+
+# Initialize database (creates tables if missing)
+python3 -c "from notifications.models import init_db; init_db()"
 ```
+
+**Port Notes**:
+- Backend: **8088** (README incorrectly states 8000)
+- Frontend dev: **3000** (README incorrectly states 3002)
+
+**Known Issues**:
+- `datetime.utcnow()` deprecation warning in cache functions (line 552 of server.py) - harmless, functionality works correctly
 
 ### Running Tests
 ```bash
@@ -113,6 +126,9 @@ curl http://127.0.0.1:8088/api/funds
 # Get specific funds
 curl "http://127.0.0.1:8088/api/funds?codes=015299,006105"
 
+# Get market indices (NASDAQ, S&P 500, average premium, exchange-traded count)
+curl http://127.0.0.1:8088/api/market-indices | python3 -m json.tool
+
 # Get/Update fund monitoring status
 curl http://127.0.0.1:8088/api/notifications/monitored-funds/015299
 curl -X PUT http://127.0.0.1:8088/api/notifications/monitored-funds/015299 \
@@ -124,6 +140,21 @@ curl http://127.0.0.1:8088/api/notifications/monitoring/status
 # Get fund triggers
 curl http://127.0.0.1:8088/api/notifications/funds/015299/triggers
 ```
+
+### Market Indices API
+
+**Endpoint**: `GET /api/market-indices`
+
+**Returns**: NASDAQ value, S&P 500 value, average premium rate, exchange-traded fund count, total fund count
+
+**Dynamic Calculation** (server.py lines 1182-1201):
+- Fetches fund data by calling `get_qdii_funds()`
+- Calculates `total_funds` from actual fund count
+- Calculates `exchange_traded_count` from funds with `valuation > 0`
+- Calculates `avg_premium` as average of all exchange-traded funds' premium rates
+- Cached for 1 minute to optimize performance
+
+**Critical**: Do not hardcode these values. Always calculate dynamically from actual fund data.
 
 ### Database Operations
 ```bash
@@ -145,7 +176,19 @@ LIMIT 20;
 
 # View configuration
 SELECT * FROM notification_config;
+
+# View historical NAV cache (1-year change data)
+SELECT fund_code, percentage_change, days_calculated,
+       datetime(cached_at, 'localtime') as cached_time
+FROM historical_nav_cache
+ORDER BY cached_at DESC;
+
+# Clear historical NAV cache (to force refresh)
+DELETE FROM historical_nav_cache;
+DELETE FROM historical_nav_cache WHERE fund_code = '159659';
 ```
+
+**Historical Cache Note**: The `historical_nav_cache` table stores 1-year NAV performance data with 24-hour expiration. Cache is automatically refreshed when expired. Manually clear cache to force immediate refresh.
 
 ### Debugging Fund Data
 ```bash
@@ -289,10 +332,11 @@ This pattern is used in `services/fundApiService.ts` for lookup and add operatio
 ### Column Sorting Implementation
 
 **Default Sorting Behavior**:
-- Initial page load: Sorts by NAV percentage change descending (`netValue` column, `priceChangePercent` field)
+- Initial page load: Sorts by NAV percentage change descending (`netValue` column, `netValueChangePercent` field)
 - 全部基金 tab: NAV% descending
 - 纳斯达克 tab: NAV% descending
 - 场内基金 tab: Premium rate descending
+- **1年期 (1-Year)**: Sorts by NAV-based 1-year percentage change
 
 **Sorting Implementation** (App.tsx):
 ```typescript
@@ -304,6 +348,10 @@ switch (sortColumn) {
   case 'price': aValue = a.priceChangePercent; break;      // NOT a.price
   case 'netValue': aValue = a.netValueChangePercent; break;  // NOT a.netValue
   case 'premiumRate': aValue = a.premiumRate; break;
+  case 'oneYearChange':  // 1-year NAV percentage change
+    aValue = a.oneYearChangeAvailable ? a.oneYearChange || 0 : -999;
+    bValue = b.oneYearChangeAvailable ? b.oneYearChange || 0 : -999;
+    break;
   case 'name': aValue = a.name; break;  // Only text column sorts by value
 }
 
@@ -322,6 +370,30 @@ const handleTabChange = (tabId: string) => {
 
 **Critical**: When adding sortable columns, determine if it should sort by percentage change or absolute value. Users expect percentage-based sorting for price/NAV columns to quickly identify best/worst performers.
 
+### 1-Year Percentage Change Column
+
+**Purpose**: Display annual NAV performance for all funds using consistent NAV-based calculation.
+
+**Calculation**:
+- Formula: `(current_NAV - NAV_1yr_ago) / NAV_1yr_ago × 100`
+- **Base (denominator)**: NAV from one year ago (not current NAV)
+- All funds use NAV-based change (ETFs use NAV, not trading price)
+- Data cached for 24 hours in `historical_nav_cache` table
+- Fetched via `fetch_historical_nav_eastmoney()` using AKShare's `fund_open_fund_info_em()`
+
+**Data Flow**:
+1. Backend calls `get_one_year_change(code, is_exchange_traded)` for each fund
+2. Checks `historical_nav_cache` table for valid cache (< 24 hours old)
+3. On cache miss: fetches from AKShare, stores in database
+4. Frontend displays with color coding (red=positive, green=negative)
+5. Funds without data show "—" and sort to bottom (-999 sentinel value)
+
+**Implementation Notes**:
+- AKShare's `fund_open_fund_info_em()` returns data with **oldest first, newest last**
+- Use `df.iloc[-1]` for current NAV (newest row)
+- Find closest date to target (1 year ago) using time difference calculation
+- Sorting places funds without data at bottom when descending
+
 ## Data Structures
 
 ### FundData Type
@@ -339,6 +411,8 @@ const handleTabChange = (tabId: string) => {
   isWatchlisted: boolean;
   isMonitorEnabled?: boolean;  // Monitoring status from database (CRITICAL: persists to DB)
   isUserAdded?: boolean; // User-added vs preset fund
+  oneYearChange?: number;  // 1-year NAV percentage change
+  oneYearChangeAvailable?: boolean;  // True if historical data exists
 }
 ```
 
@@ -348,6 +422,7 @@ const handleTabChange = (tabId: string) => {
 - `valuation > 0` → Fund is exchange-traded (LOF or ETF) with real-time trading price
 - `valuation === 0` → Fund is NAV-based only (no trading price, like ETF联接 funds)
 - `marketPrice > 0` → Fund has NAV data (all funds should have this)
+- `oneYearChange` → NAV-based 1-year performance, calculated as (current_NAV - NAV_1yr_ago) / NAV_1yr_ago × 100
 
 ### Backend Response Structure
 - Returns array of funds with NAV in `marketPrice` field
