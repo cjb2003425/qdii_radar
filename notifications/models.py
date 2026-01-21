@@ -139,11 +139,11 @@ def init_db():
                 ('smtp_username', ''),
                 ('smtp_password', ''),
                 ('smtp_from_email', ''),
-                ('check_interval_seconds', '180'),
+                ('check_interval_seconds', '3600'),
                 ('premium_threshold_high', '5.0'),
                 ('premium_threshold_low', '-5.0'),
                 ('debounce_minutes', '1'),
-                ('alert_time_period', 'all_day'),
+                ('alert_time_period', 'trading_hours'),
             ]
 
             for key, value in default_configs:
