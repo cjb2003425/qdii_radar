@@ -645,11 +645,61 @@ def fetch_nav_from_akshare(code: str) -> tuple:
 # ============================================================================
 
 LIMIT_CACHE_DURATION = 900  # 15 minutes
+SEED_CACHE_STALE_DURATION = 86400  # 24 hours
 LIMIT_CACHE_FILE = Path(__file__).parent / "data" / "fund_limit_cache.json"
 
 limit_cache_store: Dict[str, Dict] = {}
 limit_refresh_inflight: set[str] = set()
 history_refresh_inflight: set[str] = set()
+
+
+def inspect_limit_cache_store_staleness() -> None:
+    """Log seed-cache age range and warn when startup cache is operationally stale."""
+    if not limit_cache_store:
+        return
+
+    valid_timestamps = []
+    for payload in limit_cache_store.values():
+        if not isinstance(payload, dict):
+            continue
+        ts = payload.get("timestamp")
+        try:
+            valid_timestamps.append(float(ts))
+        except (TypeError, ValueError):
+            continue
+
+    entry_count = len(limit_cache_store)
+    if not valid_timestamps:
+        logger.warning(
+            "Seed limit cache loaded with %s entries but no valid timestamps were found; "
+            "serving cached values first and relying on background refresh",
+            entry_count,
+        )
+        return
+
+    oldest_ts = min(valid_timestamps)
+    newest_ts = max(valid_timestamps)
+    oldest_dt = datetime.utcfromtimestamp(oldest_ts).isoformat()
+    newest_dt = datetime.utcfromtimestamp(newest_ts).isoformat()
+
+    logger.info(
+        "Loaded limit cache from disk: %s entries, oldest=%s, newest=%s",
+        entry_count,
+        oldest_dt,
+        newest_dt,
+    )
+
+    oldest_age = datetime.utcnow().timestamp() - oldest_ts
+    if oldest_age > SEED_CACHE_STALE_DURATION:
+        stale_hours = round(SEED_CACHE_STALE_DURATION / 3600)
+        logger.warning(
+            "Seed limit cache is stale (>%sh): %s entries, oldest=%s, newest=%s; "
+            "serving cached values first and relying on background refresh",
+            stale_hours,
+            entry_count,
+            oldest_dt,
+            newest_dt,
+        )
 
 
 def load_limit_cache_store() -> None:
@@ -662,7 +712,7 @@ def load_limit_cache_store() -> None:
             data = json.load(f)
         if isinstance(data, dict):
             limit_cache_store = data
-            logger.info(f"Loaded limit cache from disk: {len(limit_cache_store)} entries")
+            inspect_limit_cache_store_staleness()
     except Exception as e:
         logger.warning(f"Failed to load limit cache from disk: {e}")
 
