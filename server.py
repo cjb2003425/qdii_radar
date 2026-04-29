@@ -1455,14 +1455,27 @@ async def get_qdii_funds(codes: str = None):
                 fund["isExchangeTraded"] = True
                 fund["valuation"] = round(current_value, 4)
                 fund["valuationRate"] = round(rate_val, 2)
+
+                nav_value = fund.get("marketPrice", 0)
+                if nav_value and nav_value > 0:
+                    price_diff_ratio = abs(current_value - nav_value) / nav_value
+                    if price_diff_ratio > 0.5:
+                        logger.warning(
+                            f"Suspicious exchange quote for {code}: price={current_value}, nav={nav_value}, diff_ratio={price_diff_ratio:.2f}"
+                        )
+                        fund["premiumRate"] = 0
+                    else:
+                        premium_rate = ((current_value - nav_value) / nav_value) * 100
+                        fund["premiumRate"] = round(premium_rate, 2)
+                else:
+                    fund["premiumRate"] = 0
             else:
                 nav_value = price_val if price_val > 0 else fallback_val
                 fund["valuation"] = round(nav_value, 4)
                 fund["valuationRate"] = round(rate_val, 2)
                 fund["marketPrice"] = round(nav_value, 4)
                 fund["marketPriceRate"] = round(rate_val, 2)
-
-            fund["premiumRate"] = 0
+                fund["premiumRate"] = 0
         except (ValueError, ZeroDivisionError):
             pass
 
