@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import httpx
 import asyncio
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import List, Dict, Optional
 import logging
 import requests
@@ -679,8 +679,8 @@ def inspect_limit_cache_store_staleness() -> None:
 
     oldest_ts = min(valid_timestamps)
     newest_ts = max(valid_timestamps)
-    oldest_dt = datetime.utcfromtimestamp(oldest_ts).isoformat()
-    newest_dt = datetime.utcfromtimestamp(newest_ts).isoformat()
+    oldest_dt = datetime.fromtimestamp(oldest_ts, UTC).isoformat()
+    newest_dt = datetime.fromtimestamp(newest_ts, UTC).isoformat()
 
     logger.info(
         "Loaded limit cache from disk: %s entries, oldest=%s, newest=%s",
@@ -689,7 +689,7 @@ def inspect_limit_cache_store_staleness() -> None:
         newest_dt,
     )
 
-    oldest_age = datetime.utcnow().timestamp() - oldest_ts
+    oldest_age = datetime.now(UTC).timestamp() - oldest_ts
     if oldest_age > SEED_CACHE_STALE_DURATION:
         stale_hours = round(SEED_CACHE_STALE_DURATION / 3600)
         logger.warning(
@@ -738,7 +738,7 @@ def get_cached_limit(code: str) -> dict:
             "nav": None,
             "nav_rate": 0,
         }
-    cache_age = datetime.utcnow().timestamp() - cached["timestamp"]
+    cache_age = datetime.now(UTC).timestamp() - cached["timestamp"]
     return {
         "exists": True,
         "fresh": cache_age < LIMIT_CACHE_DURATION,
@@ -754,7 +754,7 @@ def set_cached_limit(code: str, value: str, nav: float = None, nav_rate: float =
         "value": value,
         "nav": nav,
         "nav_rate": nav_rate,
-        "timestamp": datetime.utcnow().timestamp(),
+        "timestamp": datetime.now(UTC).timestamp(),
     }
     persist_limit_cache_store()
 
@@ -1632,7 +1632,7 @@ async def get_qdii_funds(codes: str = None):
 
     exchange_traded = [f for f in funds if f.get("isExchangeTraded")]
     premiums = [f.get("premiumRate", 0) for f in exchange_traded]
-    funds_summary_cache["timestamp"] = datetime.utcnow().timestamp()
+    funds_summary_cache["timestamp"] = datetime.now(UTC).timestamp()
     funds_summary_cache["data"] = {
         "avg_premium": round(sum(premiums) / len(premiums), 2) if premiums else 0.0,
         "exchange_traded_count": len(exchange_traded),
