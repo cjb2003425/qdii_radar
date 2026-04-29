@@ -649,22 +649,32 @@ history_refresh_inflight: set[str] = set()
 
 
 def get_cached_limit(code: str) -> dict:
-    """Read purchase-limit cache for a fund code."""
+    """Read purchase-limit/NAV cache for a fund code."""
     cached = limit_cache_store.get(code)
     if not cached:
-        return {"exists": False, "fresh": False, "value": "—"}
+        return {
+            "exists": False,
+            "fresh": False,
+            "value": "—",
+            "nav": None,
+            "nav_rate": 0,
+        }
     cache_age = datetime.utcnow().timestamp() - cached["timestamp"]
     return {
         "exists": True,
         "fresh": cache_age < LIMIT_CACHE_DURATION,
-        "value": cached["value"],
+        "value": cached.get("value", "—"),
+        "nav": cached.get("nav"),
+        "nav_rate": cached.get("nav_rate", 0),
     }
 
 
-def set_cached_limit(code: str, value: str) -> None:
-    """Write purchase-limit cache for a fund code."""
+def set_cached_limit(code: str, value: str, nav: float = None, nav_rate: float = 0) -> None:
+    """Write purchase-limit/NAV cache for a fund code."""
     limit_cache_store[code] = {
         "value": value,
+        "nav": nav,
+        "nav_rate": nav_rate,
         "timestamp": datetime.utcnow().timestamp(),
     }
 
@@ -709,8 +719,13 @@ async def refresh_limit_cache(codes: List[str]) -> None:
         async with httpx.AsyncClient() as client:
             limit_results = await fetch_limits_for_codes(client, codes_to_fetch)
         for code, payload in limit_results.items():
-            if isinstance(payload, dict) and payload.get("limit"):
-                set_cached_limit(code, payload["limit"])
+            if isinstance(payload, dict):
+                set_cached_limit(
+                    code,
+                    payload.get("limit", "—"),
+                    payload.get("nav"),
+                    payload.get("nav_rate", 0),
+                )
     except Exception as e:
         logger.warning(f"Background limit refresh failed for {codes_to_fetch}: {e}")
     finally:
@@ -1399,15 +1414,17 @@ async def get_qdii_funds(codes: str = None):
     for fund in funds_to_process:
         exchange_traded_candidate = is_exchange_traded_fund(fund["code"], fund.get("name", ""))
         cached_limit = get_cached_limit(fund["code"])
+        cached_nav = cached_limit.get("nav")
+        cached_nav_rate = cached_limit.get("nav_rate", 0)
         funds_map[fund["code"]] = {
             "id": fund["code"],
             "name": fund["name"],
             "code": fund["code"],
-            "valuation": 0,
-            "valuationRate": 0,
+            "valuation": round(cached_nav, 4) if cached_nav else 0,
+            "valuationRate": round(cached_nav_rate, 2) if cached_nav else 0,
             "premiumRate": 0,
-            "marketPrice": 0,
-            "marketPriceRate": 0,
+            "marketPrice": round(cached_nav, 4) if cached_nav else 0,
+            "marketPriceRate": round(cached_nav_rate, 2) if cached_nav else 0,
             "limitText": cached_limit["value"],
             "isWatchlisted": False,
             "oneYearChange": 0,
