@@ -719,7 +719,7 @@ async def refresh_limit_cache(codes: List[str]) -> None:
 
 
 async def refresh_one_year_change_cache(codes: List[str], exchange_traded_flags: Dict[str, bool]) -> None:
-    """Fetch and cache one-year changes in the background."""
+    """Fetch and cache one-year changes in the background without blocking the event loop."""
     codes_to_fetch = [code for code in codes if code not in history_refresh_inflight]
     if not codes_to_fetch:
         return
@@ -727,9 +727,19 @@ async def refresh_one_year_change_cache(codes: List[str], exchange_traded_flags:
     for code in codes_to_fetch:
         history_refresh_inflight.add(code)
 
+    async def _refresh_single(code: str) -> None:
+        await asyncio.to_thread(
+            get_one_year_change,
+            code,
+            exchange_traded_flags.get(code, False),
+        )
+
     try:
-        for code in codes_to_fetch:
-            get_one_year_change(code, exchange_traded_flags.get(code, False))
+        # Keep concurrency bounded so a cold cache does not create an upstream refresh storm.
+        chunk_size = 4
+        for i in range(0, len(codes_to_fetch), chunk_size):
+            chunk = codes_to_fetch[i:i + chunk_size]
+            await asyncio.gather(*[_refresh_single(code) for code in chunk], return_exceptions=True)
     except Exception as e:
         logger.warning(f"Background history refresh failed for {codes_to_fetch}: {e}")
     finally:
@@ -1507,6 +1517,15 @@ async def get_qdii_funds(codes: str = None):
 
     funds.sort(key=lambda x: (-x["marketPrice"] == 0, -x["premiumRate"]))
 
+    exchange_traded = [f for f in funds if f.get("isExchangeTraded")]
+    premiums = [f.get("premiumRate", 0) for f in exchange_traded]
+    funds_summary_cache["timestamp"] = datetime.utcnow().timestamp()
+    funds_summary_cache["data"] = {
+        "avg_premium": round(sum(premiums) / len(premiums), 2) if premiums else 0.0,
+        "exchange_traded_count": len(exchange_traded),
+        "total_funds": len(funds),
+    }
+
     return funds
 
 
@@ -1524,6 +1543,15 @@ market_indices_cache = {
     "data": None,
     "timestamp": None,
     "cache_duration": 60  # 1 minute cache for real-time data
+}
+
+funds_summary_cache = {
+    "timestamp": None,
+    "data": {
+        "avg_premium": 0.0,
+        "exchange_traded_count": 0,
+        "total_funds": len(data.funds_loader.QDII_FUNDS),
+    },
 }
 
 @app.get("/api/market-indices")
@@ -1569,10 +1597,10 @@ async def get_market_indices():
             })
 
             if response.status_code == 200:
-                data = response.json()
+                payload = response.json()
 
-                if data.get('data') and data['data'].get('diff'):
-                    for item in data['data']['diff']:
+                if payload.get('data') and payload['data'].get('diff'):
+                    for item in payload['data']['diff']:
                         symbol = item.get('f12', '')
                         name = item.get('f14', '')
                         value = item.get('f2', 0)
@@ -1596,17 +1624,13 @@ async def get_market_indices():
     except Exception as e:
         logger.error(f"Error fetching market indices from Eastmoney: {e}")
 
-    # Calculate fund statistics dynamically
-    funds = await get_qdii_funds()
-    total_funds = len(funds)
-    exchange_traded = [f for f in funds if f.get("valuation", 0) > 0]
-    exchange_traded_count = len(exchange_traded)
+    summary = funds_summary_cache.get("data") or {}
+    avg_premium = float(summary.get("avg_premium", 0) or 0)
+    exchange_traded_count = int(summary.get("exchange_traded_count", 0) or 0)
+    default_total_funds = len(data.funds_loader.QDII_FUNDS)
+    total_funds = int(summary.get("total_funds", default_total_funds) or default_total_funds)
 
-    # Calculate average premium rate (only for exchange-traded funds)
-    premiums = [f.get("premiumRate", 0) for f in exchange_traded]
-    avg_premium = round(sum(premiums) / len(premiums), 2) if premiums else 0
-
-    logger.info(f"Fund statistics: {exchange_traded_count}/{total_funds} exchange-traded, avg premium: {avg_premium}%")
+    logger.info(f"Fund statistics (cached summary): {exchange_traded_count}/{total_funds} exchange-traded, avg premium: {avg_premium}%")
 
     # Build response
     response_data = {
