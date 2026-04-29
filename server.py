@@ -638,6 +638,120 @@ def fetch_nav_from_akshare(code: str) -> tuple:
 
 
 # ============================================================================
+# Purchase Limit Cache
+# ============================================================================
+
+LIMIT_CACHE_DURATION = 900  # 15 minutes
+
+limit_cache_store: Dict[str, Dict] = {}
+limit_refresh_inflight: set[str] = set()
+history_refresh_inflight: set[str] = set()
+
+
+def get_cached_limit(code: str) -> dict:
+    """Read purchase-limit cache for a fund code."""
+    cached = limit_cache_store.get(code)
+    if not cached:
+        return {"exists": False, "fresh": False, "value": "—"}
+    cache_age = datetime.utcnow().timestamp() - cached["timestamp"]
+    return {
+        "exists": True,
+        "fresh": cache_age < LIMIT_CACHE_DURATION,
+        "value": cached["value"],
+    }
+
+
+def set_cached_limit(code: str, value: str) -> None:
+    """Write purchase-limit cache for a fund code."""
+    limit_cache_store[code] = {
+        "value": value,
+        "timestamp": datetime.utcnow().timestamp(),
+    }
+
+
+# ============================================================================
+# One-Year Change Cache Helper
+# ============================================================================
+
+def get_cached_one_year_change(code: str) -> dict:
+    """Read one-year change from historical DB cache."""
+    from notifications.models import get_db
+
+    session = get_db()
+    try:
+        cached = get_historical_cache(session, code)
+        if not cached:
+            return {"exists": False, "fresh": False, "available": False, "value": 0}
+        return {
+            "exists": True,
+            "fresh": True,
+            "available": True,
+            "value": cached["percentage_change"],
+        }
+    finally:
+        session.close()
+
+
+# ============================================================================
+# Background Refresh Workers
+# ============================================================================
+
+async def refresh_limit_cache(codes: List[str]) -> None:
+    """Fetch and cache purchase limits in the background."""
+    codes_to_fetch = [code for code in codes if code not in limit_refresh_inflight]
+    if not codes_to_fetch:
+        return
+
+    for code in codes_to_fetch:
+        limit_refresh_inflight.add(code)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            limit_results = await fetch_limits_for_codes(client, codes_to_fetch)
+        for code, payload in limit_results.items():
+            if isinstance(payload, dict) and payload.get("limit"):
+                set_cached_limit(code, payload["limit"])
+    except Exception as e:
+        logger.warning(f"Background limit refresh failed for {codes_to_fetch}: {e}")
+    finally:
+        for code in codes_to_fetch:
+            limit_refresh_inflight.discard(code)
+
+
+async def refresh_one_year_change_cache(codes: List[str], exchange_traded_flags: Dict[str, bool]) -> None:
+    """Fetch and cache one-year changes in the background."""
+    codes_to_fetch = [code for code in codes if code not in history_refresh_inflight]
+    if not codes_to_fetch:
+        return
+
+    for code in codes_to_fetch:
+        history_refresh_inflight.add(code)
+
+    try:
+        for code in codes_to_fetch:
+            get_one_year_change(code, exchange_traded_flags.get(code, False))
+    except Exception as e:
+        logger.warning(f"Background history refresh failed for {codes_to_fetch}: {e}")
+    finally:
+        for code in codes_to_fetch:
+            history_refresh_inflight.discard(code)
+
+
+def schedule_limit_refresh(codes: List[str]) -> None:
+    """Schedule background limit refresh, skipping in-flight codes."""
+    codes_to_schedule = [code for code in codes if code not in limit_refresh_inflight]
+    if codes_to_schedule:
+        asyncio.create_task(refresh_limit_cache(codes_to_schedule))
+
+
+def schedule_history_refresh(codes: List[str], exchange_traded_flags: Dict[str, bool]) -> None:
+    """Schedule background history refresh, skipping in-flight codes."""
+    codes_to_schedule = [code for code in codes if code not in history_refresh_inflight]
+    if codes_to_schedule:
+        asyncio.create_task(refresh_one_year_change_cache(codes_to_schedule, exchange_traded_flags))
+
+
+# ============================================================================
 # Historical NAV Data Fetching (for 1-Year Percentage Change)
 # ============================================================================
 
@@ -1261,21 +1375,17 @@ async def get_qdii_funds(codes: str = None):
         # 获取所有需要处理的基金代码
         all_codes = [fund['code'] for fund in funds_to_process]
         
-        quotes, limits = await asyncio.gather(
-            fetch_quotes_for_codes(client, all_codes),
-            fetch_limits_for_codes(client, all_codes),
-            return_exceptions=True
-        )
-
+        quotes = await fetch_quotes_for_codes(client, all_codes)
         if isinstance(quotes, Exception):
             quotes = []
-        if isinstance(limits, Exception):
-            limits = {}
 
     funds_map = {}
+    missing_limit_codes = []
+    missing_history_codes = []
 
     for fund in funds_to_process:
         exchange_traded_candidate = is_exchange_traded_fund(fund["code"], fund.get("name", ""))
+        cached_limit = get_cached_limit(fund["code"])
         funds_map[fund["code"]] = {
             "id": fund["code"],
             "name": fund["name"],
@@ -1285,13 +1395,15 @@ async def get_qdii_funds(codes: str = None):
             "premiumRate": 0,
             "marketPrice": 0,
             "marketPriceRate": 0,
-            "limitText": "—",
+            "limitText": cached_limit["value"],
             "isWatchlisted": False,
             "oneYearChange": 0,
             "oneYearChangeAvailable": False,
             "isExchangeTraded": False,
             "exchangeTradedCandidate": exchange_traded_candidate
         }
+        if not cached_limit["fresh"]:
+            missing_limit_codes.append(fund["code"])
 
     for quote in quotes:
         code = quote.get("f12")
@@ -1323,6 +1435,9 @@ async def get_qdii_funds(codes: str = None):
             fund["premiumRate"] = 0
         except (ValueError, ZeroDivisionError):
             pass
+
+    # limits are no longer fetched synchronously; background refresh handles them
+    limits = {}
 
     for code, limit_data in limits.items():
         if isinstance(limit_data, dict) and code in funds_map:
@@ -1376,12 +1491,19 @@ async def get_qdii_funds(codes: str = None):
     finally:
         session.close()
 
-    # Add 1-year percentage change data (use explicit fund classification)
+    # Add 1-year percentage change data (cache-first)
+    exchange_traded_flags = {}
     for fund in funds:
-        is_exchange_traded = fund.get("isExchangeTraded", False)
-        one_year_data = get_one_year_change(fund["code"], is_exchange_traded)
-        fund["oneYearChange"] = one_year_data["percentage_change"]
-        fund["oneYearChangeAvailable"] = one_year_data["available"]
+        exchange_traded_flags[fund["code"]] = fund.get("isExchangeTraded", False)
+        cached_hist = get_cached_one_year_change(fund["code"])
+        fund["oneYearChange"] = cached_hist["value"]
+        fund["oneYearChangeAvailable"] = cached_hist["available"]
+        if not cached_hist["fresh"]:
+            missing_history_codes.append(fund["code"])
+
+    # Schedule background refreshes for missing/stale slow fields
+    schedule_limit_refresh(missing_limit_codes)
+    schedule_history_refresh(missing_history_codes, exchange_traded_flags)
 
     funds.sort(key=lambda x: (-x["marketPrice"] == 0, -x["premiumRate"]))
 
