@@ -32,6 +32,7 @@ const mapFundDataToFund = (data: FundData): Fund => {
     hasSettings: true,
     oneYearChange: data.oneYearChange || 0,
     oneYearChangeAvailable: data.oneYearChangeAvailable || false,
+    isExchangeTraded: data.isExchangeTraded || false,
   };
 };
 
@@ -67,7 +68,7 @@ const App: React.FC = () => {
       return fund.name.includes('纳斯达克') || fund.name.includes('纳指');
     }
     if (activeTab === 'exchange') {
-      return fund.price > 0; // Has trading price = exchange-traded
+      return fund.isExchangeTraded;
     }
     return true;
   });
@@ -137,7 +138,7 @@ const App: React.FC = () => {
 
   // Calculate counts
   const nasdaqCount = funds.filter(f => f.name.includes('纳斯达克') || f.name.includes('纳指')).length;
-  const exchangeCount = funds.filter(f => f.price > 0).length;
+  const exchangeCount = funds.filter(f => f.isExchangeTraded).length;
 
   useEffect(() => {
     const loadFunds = async () => {

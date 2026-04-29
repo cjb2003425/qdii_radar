@@ -151,8 +151,8 @@ curl http://127.0.0.1:8088/api/notifications/funds/015299/triggers
 **Dynamic Calculation** (server.py lines 1182-1201):
 - Fetches fund data by calling `get_qdii_funds()`
 - Calculates `total_funds` from actual fund count
-- Calculates `exchange_traded_count` from funds with `valuation > 0`
-- Calculates `avg_premium` as average of all exchange-traded funds' premium rates
+- Calculates `exchange_traded_count` from funds with `isExchangeTraded === true`
+- Calculates `avg_premium` as average of confirmed exchange-traded funds' premium rates
 - Cached for 1 minute to optimize performance
 
 **Critical**: Do not hardcode these values. Always calculate dynamically from actual fund data.
@@ -226,8 +226,9 @@ curl -s "https://push2.eastmoney.com/api/qt/ulist.np/get?secids=0.159659&fields=
 **Key Principle**: Funds are classified as exchange-traded (LOF/ETF) based on **actual trading data**, not just naming.
 
 **Detection Logic**:
-- `fund.valuation > 0` indicates real-time trading price exists → exchange-traded
-- `fund.valuation === 0` indicates no trading price → NAV-based fund only
+- `isExchangeTraded === true` means the backend/frontend actually fetched a real-time trading quote and confirmed exchange-traded behavior
+- `isExchangeTraded === false` means the fund should be treated as NAV-based for display, even if code/name heuristics suggest it might be LOF/ETF
+- `fund.valuation` may contain NAV for non-exchange-traded funds, so do not use `valuation > 0` alone as a type signal
 
 **Market Prefix Rules** (server.py):
 - Shanghai (prefix 1): 5xxxx, 6xxxx, 50xxxx, 51xxxx, 52xxxx, 53xxxx, 58xxxx, 59xxxx, 15xxxx (but NOT 159xxx)
@@ -235,20 +236,20 @@ curl -s "https://push2.eastmoney.com/api/qt/ulist.np/get?secids=0.159659&fields=
 - Critical: 159xxx funds (Shenzhen ETFs) must use prefix "0", not "1"
 
 **Price Validation**:
-- If trading price differs >50% from NAV, price is considered unreliable and reset to 0
-- This prevents displaying bad data for non-exchange-traded funds
+- If trading price differs >50% from NAV, price is considered unreliable and premium is suppressed
+- This prevents displaying bad premium data for funds with suspicious quotes
 
 **Common Pitfalls**:
 - ETF联接 funds are NOT exchange-traded (they're funds that invest in ETFs)
-- Fund 160213 is open-end, not exchange-traded (valuation = 0)
+- Funds like 160213 / 539001 may match LOF/name heuristics but still lack a stable real-time quote source; do not expose them as exchange-traded unless a live quote is actually fetched
 - Fund 012870 is ETF联接, not exchange-traded despite "LOF" in name
 - 159xxx ETF funds require Shenzhen market prefix (0), not Shanghai (1)
 
 ### NAV Data Display
 **Column Mapping** (FundRow.tsx):
-- `fund.valuation` → 价格 column (Trading price for exchange-traded funds, or "—" for NAV funds)
+- `fund.valuation` → 价格 column for confirmed exchange-traded funds; for NAV funds it may fall back to NAV display depending on current UI behavior
 - `fund.marketPrice` → 净值 column (Current NAV from Eastmoney/AKShare)
-- Premium rate only calculated when both valuation > 0 AND marketPrice > 0
+- Premium rate is only meaningful for confirmed exchange-traded funds with a valid trading quote and NAV
 
 **Critical**: Ensure valuation shows in Column 2 (价格) and marketPrice in Column 3 (净值).
 
@@ -257,9 +258,9 @@ curl -s "https://push2.eastmoney.com/api/qt/ulist.np/get?secids=0.159659&fields=
 - Filter logic: `fund.name.includes('纳斯达克') || fund.name.includes('纳指')`
 - Dynamic badge count updates based on filtered results
 
-**Exchange-Traded Tab**: Only shows funds with `valuation > 0`
-- These funds have real-time trading prices
-- LOF and ETF funds
+**Exchange-Traded Tab**: Only shows funds with `isExchangeTraded === true`
+- These funds have confirmed real-time trading prices
+- Do not derive this tab from code/name heuristics alone
 
 ### Fund Deletion Behavior
 
@@ -403,9 +404,9 @@ const handleTabChange = (tabId: string) => {
   id: string;           // Fund code
   name: string;         // Fund name
   code: string;         // Fund code
-  valuation: number;    // Trading price (场内价格) for exchange-traded funds, 0 for NAV funds
-  valuationRate: number; // Trading price daily change %
-  premiumRate: number;  // Premium/discount rate (only if valuation > 0)
+  valuation: number;    // Confirmed trading price for exchange-traded funds; otherwise typically mirrors NAV-style display data
+  valuationRate: number; // Daily change % for the current display value
+  premiumRate: number;  // Premium/discount rate (only for confirmed exchange-traded funds)
   marketPrice: number;  // Current NAV from Eastmoney/AKShare (最新净值)
   marketPriceRate: number; // NAV daily change %
   limitText: string;    // Formatted purchase limit text
@@ -420,8 +421,8 @@ const handleTabChange = (tabId: string) => {
 **Critical Field**: `isMonitorEnabled` - Must be included in all data merging operations or monitoring status won't persist.
 
 **Critical Distinctions**:
-- `valuation > 0` → Fund is exchange-traded (LOF or ETF) with real-time trading price
-- `valuation === 0` → Fund is NAV-based only (no trading price, like ETF联接 funds)
+- `isExchangeTraded === true` → Fund has a confirmed real-time trading quote and should be treated as exchange-traded in UI
+- `isExchangeTraded === false` → Fund should be treated as NAV-based in UI, even if code/name heuristics suggest LOF/ETF
 - `marketPrice > 0` → Fund has NAV data (all funds should have this)
 - `oneYearChange` → Cumulative NAV-based 1-year performance, calculated as (current_cumulative_NAV - cumulative_NAV_1yr_ago) / cumulative_NAV_1yr_ago × 100
   - Uses cumulative NAV (累计净值) to account for dividend distributions, not unit NAV (单位净值)

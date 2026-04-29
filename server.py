@@ -7,6 +7,7 @@ import re
 from datetime import datetime
 from typing import List, Dict, Optional
 import logging
+import requests
 from html import unescape
 from data.funds_loader import API_CONFIG
 import data.funds_loader
@@ -33,6 +34,109 @@ logger = logging.getLogger(__name__)
 # Chinese stock trading date cache
 _trading_dates_cache = {}
 _cache_date = None
+
+
+def is_exchange_traded_fund(code: str, name: str = "") -> bool:
+    """Detect whether a fund is exchange-traded (ETF/LOF)."""
+    code = (code or "").strip()
+    name = (name or "").upper()
+
+    if not code:
+        return False
+
+    if code.startswith("159"):
+        return True
+    if code.startswith("15") and not code.startswith("159"):
+        return True
+    if code.startswith(("50", "51", "52", "53", "58", "59", "16", "12")):
+        return True
+    if code.startswith("5"):
+        return True
+    if "LOF" in name:
+        return True
+    if "ETF" in name and "联接" not in name:
+        return True
+
+    return False
+
+
+def get_secid_prefix(code: str) -> str:
+    """Get Eastmoney secid market prefix for exchange-traded funds."""
+    code = (code or "").strip()
+
+    if code.startswith(("5", "6")) or code[:2] in {"50", "51", "52", "53", "58", "59"}:
+        return "1"
+    if code.startswith("15") and not code.startswith("159"):
+        return "1"
+    return "0"
+
+
+def _normalize_exchange_quote(code: str, current_price, prev_close, change_percent) -> Optional[Dict]:
+    try:
+        current_price = float(current_price or 0)
+        prev_close = float(prev_close or 0)
+        change_percent = float(change_percent or 0)
+    except (TypeError, ValueError):
+        return None
+
+    if current_price <= 0:
+        return None
+
+    return {
+        "f12": code,
+        "f2": current_price,
+        "f3": change_percent,
+        "f17": prev_close if prev_close > 0 else current_price,
+        "f18": prev_close if prev_close > 0 else current_price,
+    }
+
+
+def fetch_exchange_quotes_sina(codes: List[str]) -> Dict[str, Dict]:
+    """Fetch real-time exchange-traded fund quotes from Sina ETF/LOF list APIs."""
+    code_set = {str(code).strip() for code in codes if str(code).strip()}
+    if not code_set:
+        return {}
+
+    quotes: Dict[str, Dict] = {}
+
+    for symbol in ("ETF基金", "LOF基金"):
+        try:
+            df = ak.fund_etf_category_sina(symbol=symbol)
+            if df is None or df.empty:
+                continue
+
+            for _, row in df.iterrows():
+                raw_code = str(row.get("代码", "")).strip()
+                code = raw_code[-6:]
+                if code not in code_set:
+                    continue
+
+                normalized = _normalize_exchange_quote(
+                    code,
+                    row.get("最新价", 0),
+                    row.get("昨收", row.get("最新价", 0)),
+                    row.get("涨跌幅", 0),
+                )
+                if normalized:
+                    quotes[code] = normalized
+        except Exception as e:
+            logger.warning(f"Failed to fetch {symbol} quotes from Sina: {e}")
+
+    return quotes
+
+
+async def fetch_exchange_quote(client: httpx.AsyncClient, code: str) -> Optional[Dict]:
+    """Fetch real-time quote for one exchange-traded fund."""
+    del client
+
+    def _fetch() -> Optional[Dict]:
+        return fetch_exchange_quotes_sina([code]).get(code)
+
+    try:
+        return await asyncio.to_thread(_fetch)
+    except Exception as e:
+        logger.warning(f"Failed to fetch exchange quote for {code}: {e}")
+        return None
 
 
 def get_chinese_stock_dates(start_date: str = None, end_date: str = None) -> Dict:
@@ -703,11 +807,11 @@ def fetch_historical_etf_price(code: str, days: int = 365) -> dict:
 
 def get_one_year_change(code: str, is_exchange_traded: bool) -> dict:
     """
-    Get 1-year percentage change for a fund based on NAV, using cache if available.
+    Get 1-year percentage change for a fund using the correct history path.
 
     Args:
         code: Fund code
-        is_exchange_traded: True if fund is ETF/LOF (ignored - always uses NAV)
+        is_exchange_traded: True if fund is ETF/LOF
 
     Returns:
         {
@@ -727,15 +831,14 @@ def get_one_year_change(code: str, is_exchange_traded: bool) -> dict:
                 'available': True
             }
 
-        # Cache miss or expired - fetch fresh NAV data (always use NAV, not trading price)
-        hist_data = fetch_historical_nav_eastmoney(code)
+        hist_data = fetch_historical_etf_price(code) if is_exchange_traded else fetch_historical_nav_eastmoney(code)
 
         if hist_data:
-            # Cache the result
+            base_value = hist_data.get('price_1_year_ago', hist_data.get('nav_1_year_ago', 0))
             set_historical_cache(
                 session,
                 code,
-                hist_data.get('nav_1_year_ago', 0),
+                base_value,
                 hist_data['percentage_change'],
                 hist_data['days_found']
             )
@@ -760,49 +863,22 @@ def get_one_year_change(code: str, is_exchange_traded: bool) -> dict:
 
 async def fetch_quotes_for_codes(client: httpx.AsyncClient, codes: List[str]) -> List[Dict]:
     """获取指定基金代码的实时行情"""
+    del client
     quotes = []
 
-    # 尝试获取场内基金数据（LOF基金）
-    # 自动检测LOF基金：尝试从Eastmoney API获取实时数据
+    exchange_codes = []
+    for code in codes:
+        fund = next((f for f in data.funds_loader.QDII_FUNDS if f['code'] == code), None)
+        fund_name = fund['name'] if fund else ''
+        if is_exchange_traded_fund(code, fund_name):
+            exchange_codes.append(code)
+
     try:
-        secids = []
-        for code in codes:
-            # Determine market prefix:
-            # Shanghai (1): 5xxxx, 50xxxx, 51xxxx, 52xxxx, 53xxxx, 58xxxx, 59xxx, 15xxxx (but not 159xxx)
-            # Shenzhen (0): 16xxxx, 159xxx, 12xxxx
-            if code.startswith(("5", "6")) or code[:2].startswith(("50", "51", "52", "53", "58", "59")):
-                prefix = "1"  # Shanghai market
-            elif code.startswith("15") and not code.startswith("159"):
-                prefix = "1"  # Shanghai market (15xxxx but not 159xxx)
-            else:
-                prefix = "0"  # Shenzhen market (includes 159xxx, 16xxxx, 12xxxx)
-            secids.append(f"{prefix}.{code}")
-
-        secid_str = ",".join(secids)
-        url = f"https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f15,f16,f17,f18&secids={
-            secid_str}&_={int(datetime.now().timestamp() * 1000)}"
-
-        response = await client.get(url, headers={
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38"
-        }, timeout=10.0)
-
-        if response.status_code == 200:
-            data = response.json()
-            if data and 'data' in data and 'diff' in data['data']:
-                for item in data['data']['diff']:
-                    if item.get('f12') and item.get('f2'):
-                        quotes.append({
-                            "f12": item.get('f12'),
-                            "f2": item.get('f2', 0),
-                            "f3": item.get('f3', 0),
-                            "f17": item.get('f17', item.get('f2', 0)),
-                            "f18": item.get('f18', item.get('f2', 0))
-                        })
-                logger.info(
-                    f"Fetched {len(quotes)} real-time quotes from Eastmoney API")
-
+        quote_map = await asyncio.to_thread(fetch_exchange_quotes_sina, exchange_codes)
+        quotes = [quote_map[code] for code in exchange_codes if code in quote_map and quote_map[code].get('f2')]
+        logger.info(f"Fetched {len(quotes)} real-time exchange quotes from Sina API")
     except Exception as e:
-        logger.warning(f"Failed to fetch from market API: {e}")
+        logger.warning(f"Failed to fetch exchange quotes from Sina API: {e}")
 
     return quotes
 
@@ -810,47 +886,17 @@ async def fetch_quotes_for_codes(client: httpx.AsyncClient, codes: List[str]) ->
 async def fetch_quotes(client: httpx.AsyncClient) -> List[Dict]:
     quotes = []
 
-    # 尝试获取所有基金的实时数据（自动检测LOF基金）
     try:
-        codes = [fund['code'] for fund in data.funds_loader.QDII_FUNDS]
-        secids = []
-        for code in codes:
-            # Determine market prefix:
-            # Shanghai (1): 5xxxx, 50xxxx, 51xxxx, 52xxxx, 53xxxx, 58xxxx, 59xxx, 15xxxx (but not 159xxx)
-            # Shenzhen (0): 16xxxx, 159xxx, 12xxxx
-            if code.startswith(("5", "6")) or code[:2].startswith(("50", "51", "52", "53", "58", "59")):
-                prefix = "1"  # Shanghai market
-            elif code.startswith("15") and not code.startswith("159"):
-                prefix = "1"  # Shanghai market (15xxxx but not 159xxx)
-            else:
-                prefix = "0"  # Shenzhen market (includes 159xxx, 16xxxx, 12xxxx)
-            secids.append(f"{prefix}.{code}")
-
-        secid_str = ",".join(secids)
-        url = f"https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f15,f16,f17,f18&secids={
-            secid_str}&_={int(datetime.now().timestamp() * 1000)}"
-
-        response = await client.get(url, headers={
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38"
-        }, timeout=10.0)
-
-        if response.status_code == 200:
-            data = response.json()
-            if data and 'data' in data and 'diff' in data['data']:
-                for item in data['data']['diff']:
-                    if item.get('f12') and item.get('f2'):
-                        quotes.append({
-                            "f12": item.get('f12'),
-                            "f2": item.get('f2', 0),
-                            "f3": item.get('f3', 0),
-                            "f17": item.get('f17', item.get('f2', 0)),
-                            "f18": item.get('f18', item.get('f2', 0))
-                        })
-                logger.info(
-                    f"Fetched {len(quotes)} real-time quotes from Eastmoney API")
+        exchange_codes = [
+            fund['code'] for fund in data.funds_loader.QDII_FUNDS
+            if is_exchange_traded_fund(fund['code'], fund.get('name', ''))
+        ]
+        quote_map = await asyncio.to_thread(fetch_exchange_quotes_sina, exchange_codes)
+        quotes = [quote_map[code] for code in exchange_codes if code in quote_map and quote_map[code].get('f2')]
+        logger.info(f"Fetched {len(quotes)} real-time exchange quotes from Sina API")
 
     except Exception as e:
-        logger.warning(f"Failed to fetch from market API: {e}")
+        logger.warning(f"Failed to fetch exchange quotes from Sina API: {e}")
 
     # 为其他基金获取净值数据（从东方财富移动API）
     try:
@@ -1229,6 +1275,7 @@ async def get_qdii_funds(codes: str = None):
     funds_map = {}
 
     for fund in funds_to_process:
+        exchange_traded_candidate = is_exchange_traded_fund(fund["code"], fund.get("name", ""))
         funds_map[fund["code"]] = {
             "id": fund["code"],
             "name": fund["name"],
@@ -1241,7 +1288,9 @@ async def get_qdii_funds(codes: str = None):
             "limitText": "—",
             "isWatchlisted": False,
             "oneYearChange": 0,
-            "oneYearChangeAvailable": False
+            "oneYearChangeAvailable": False,
+            "isExchangeTraded": False,
+            "exchangeTradedCandidate": exchange_traded_candidate
         }
 
     for quote in quotes:
@@ -1251,21 +1300,27 @@ async def get_qdii_funds(codes: str = None):
 
         fund = funds_map[code]
         price = quote.get("f2", "-")
-        pre_close_nav = quote.get("f17", "-")
+        pre_close_value = quote.get("f17", "-")
         rate = quote.get("f3", "-")
 
         try:
             price_val = float(price) if price != "-" else 0
-            nav_val = float(pre_close_nav) if pre_close_nav != "-" else 0
+            fallback_val = float(pre_close_value) if pre_close_value != "-" else 0
             rate_val = float(rate) if rate != "-" else 0
 
-            valuation = price_val if price_val > 0 else nav_val
+            current_value = price_val if price_val > 0 else fallback_val
+            if current_value > 0:
+                fund["isExchangeTraded"] = True
+                fund["valuation"] = round(current_value, 4)
+                fund["valuationRate"] = round(rate_val, 2)
+            else:
+                nav_value = price_val if price_val > 0 else fallback_val
+                fund["valuation"] = round(nav_value, 4)
+                fund["valuationRate"] = round(rate_val, 2)
+                fund["marketPrice"] = round(nav_value, 4)
+                fund["marketPriceRate"] = round(rate_val, 2)
 
-            fund["valuation"] = round(valuation, 4)
-            fund["valuationRate"] = round(rate_val, 2)  # Add valuation rate
-            fund["marketPrice"] = round(price_val, 4)
-            fund["marketPriceRate"] = round(rate_val, 2)
-            fund["premiumRate"] = 0  # Will be calculated after NAV is fetched
+            fund["premiumRate"] = 0
         except (ValueError, ZeroDivisionError):
             pass
 
@@ -1276,25 +1331,31 @@ async def get_qdii_funds(codes: str = None):
             if "nav" in limit_data:
                 nav = limit_data["nav"]
                 nav_rate = limit_data.get("nav_rate", 0)
+                fund_data = funds_map[code]
 
-                # NAV data should go to marketPrice (净值) not valuation (估值)
-                funds_map[code]["marketPrice"] = round(nav, 4)
-                funds_map[code]["marketPriceRate"] = round(nav_rate, 2)
+                # marketPrice is always the NAV channel
+                fund_data["marketPrice"] = round(nav, 4)
+                fund_data["marketPriceRate"] = round(nav_rate, 2)
 
-                # Recalculate premium rate after NAV update
-                valuation = funds_map[code].get("valuation", 0)
-                if valuation > 0 and nav > 0:
-                    # Validate that the trading price (valuation) is reasonable
-                    # If it's more than 50% different from NAV, it's likely bad data
-                    price_diff_ratio = abs(valuation - nav) / nav
-                    if price_diff_ratio > 0.5:
-                        # Trading price is unreliable, reset it
-                        funds_map[code]["valuation"] = 0
-                        funds_map[code]["valuationRate"] = 0
-                        funds_map[code]["premiumRate"] = 0
-                    else:
-                        premium_rate = ((valuation - nav) / nav) * 100
-                        funds_map[code]["premiumRate"] = round(premium_rate, 2)
+                if fund_data.get("isExchangeTraded"):
+                    current_price = fund_data.get("valuation", 0)
+                    if current_price > 0 and nav > 0:
+                        price_diff_ratio = abs(current_price - nav) / nav
+                        if price_diff_ratio > 0.5:
+                            logger.warning(
+                                f"Suspicious exchange quote for {code}: price={current_price}, nav={nav}, diff_ratio={price_diff_ratio:.2f}"
+                            )
+                            fund_data["premiumRate"] = 0
+                        else:
+                            premium_rate = ((current_price - nav) / nav) * 100
+                            fund_data["premiumRate"] = round(premium_rate, 2)
+                else:
+                    fund_data["valuation"] = round(nav, 4)
+                    fund_data["valuationRate"] = round(nav_rate, 2)
+                    fund_data["premiumRate"] = 0
+
+    for fund in funds_map.values():
+        fund.pop("exchangeTradedCandidate", None)
 
     funds = list(funds_map.values())
 
@@ -1315,9 +1376,9 @@ async def get_qdii_funds(codes: str = None):
     finally:
         session.close()
 
-    # Add 1-year percentage change data (use non-blocking approach for performance)
+    # Add 1-year percentage change data (use explicit fund classification)
     for fund in funds:
-        is_exchange_traded = fund.get("valuation", 0) > 0
+        is_exchange_traded = fund.get("isExchangeTraded", False)
         one_year_data = get_one_year_change(fund["code"], is_exchange_traded)
         fund["oneYearChange"] = one_year_data["percentage_change"]
         fund["oneYearChangeAvailable"] = one_year_data["available"]

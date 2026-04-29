@@ -5,6 +5,27 @@ import { API_CONFIG } from '../config/api';
 
 const QDII_FUNDS_BASE = PRESET_FUNDS;
 
+const isExchangeTradedCandidate = (code: string, name: string = ''): boolean => {
+  if (!code) return false;
+  if (code.startsWith('159')) return true;
+  if (code.startsWith('15') && !code.startsWith('159')) return true;
+  if ([ '50', '51', '52', '53', '58', '59', '16', '12' ].some(prefix => code.startsWith(prefix))) return true;
+  if (code.startsWith('5')) return true;
+  const upperName = name.toUpperCase();
+  if (upperName.includes('LOF')) return true;
+  return upperName.includes('ETF') && !name.includes('联接');
+};
+
+const getSecidPrefix = (code: string): string => {
+  if (code.startsWith('5') || code.startsWith('6') || ['50', '51', '52', '53', '58', '59'].some(prefix => code.startsWith(prefix))) {
+    return '1';
+  }
+  if (code.startsWith('15') && !code.startsWith('159')) {
+    return '1';
+  }
+  return '0';
+};
+
 const formatLimitText = (status: string, limit: number): string => {
   if (!status) return '—';
   if (status.includes('暂停')) return '暂停';
@@ -67,7 +88,7 @@ const fetchFundLimitsClient = async (): Promise<Record<string, string>> => {
 const fetchEastmoneyQuotesClient = async (): Promise<any[]> => {
   return new Promise<any[]>((resolve) => {
     const secIds = QDII_FUNDS_BASE.map(f => {
-      const prefix = (f.code.startsWith('5') || f.code.startsWith('6')) ? '1' : '0';
+      const prefix = getSecidPrefix(f.code);
       return `${prefix}.${f.code}`;
     }).join(',');
     const cbName = `cb_em_q_${Math.floor(Math.random() * 100000)}`;
@@ -100,7 +121,17 @@ const fetchClientSide = async (): Promise<FundData[]> => {
   const fundsMap = new Map<string, FundData>();
   QDII_FUNDS_BASE.forEach(base => {
     fundsMap.set(base.code, {
-      id: base.code, name: base.name, code: base.code, valuation: 0, valuationRate: 0, premiumRate: 0, marketPrice: 0, marketPriceRate: 0, limitText: '—', isWatchlisted: false
+      id: base.code,
+      name: base.name,
+      code: base.code,
+      valuation: 0,
+      valuationRate: 0,
+      premiumRate: 0,
+      marketPrice: 0,
+      marketPriceRate: 0,
+      limitText: '—',
+      isWatchlisted: false,
+      isExchangeTraded: false
     });
   });
 
@@ -115,14 +146,21 @@ const fetchClientSide = async (): Promise<FundData[]> => {
       const item = fundsMap.get(code);
       if (item) {
         const price = quote.f2 === '-' ? 0 : parseFloat(quote.f2);
-        const preClose = quote.f18 === '-' ? 0 : parseFloat(quote.f18);
-        const valuation = preClose > 0 ? preClose : price;
-        const marketPriceRate = quote.f3 === '-' ? 0 : parseFloat(quote.f3);
-        const premiumRate = (price > 0 && valuation > 0) ? ((price - valuation) / valuation) * 100 : 0;
-        item.marketPrice = Number(price.toFixed(3));
-        item.marketPriceRate = Number(marketPriceRate.toFixed(2));
-        item.valuation = Number(valuation.toFixed(4));
-        item.premiumRate = Number(premiumRate.toFixed(2));
+        const fallbackValue = quote.f18 === '-' ? 0 : parseFloat(quote.f18);
+        const rate = quote.f3 === '-' ? 0 : parseFloat(quote.f3);
+
+        const currentValue = price > 0 ? price : fallbackValue;
+        if (currentValue > 0 && isExchangeTradedCandidate(code, item.name)) {
+          item.isExchangeTraded = true;
+          item.valuation = Number(currentValue.toFixed(4));
+          item.valuationRate = Number(rate.toFixed(2));
+        } else {
+          const navValue = price > 0 ? price : fallbackValue;
+          item.valuation = Number(navValue.toFixed(4));
+          item.valuationRate = Number(rate.toFixed(2));
+          item.marketPrice = Number(navValue.toFixed(4));
+          item.marketPriceRate = Number(rate.toFixed(2));
+        }
       }
     });
 
@@ -252,7 +290,8 @@ function mergeUserFundsWithBackendData(userFunds: ReturnType<typeof getUserFunds
         limitText: backendFund.limitText,
         isWatchlisted: false,
         isMonitorEnabled: backendFund.isMonitorEnabled || false,
-        isUserAdded: true
+        isUserAdded: true,
+        isExchangeTraded: backendFund.isExchangeTraded || false
       };
     } else {
       // 如果后端没有数据，使用基础数据
@@ -269,7 +308,8 @@ function mergeUserFundsWithBackendData(userFunds: ReturnType<typeof getUserFunds
         limitText: '—',
         isWatchlisted: false,
         isMonitorEnabled: false,
-        isUserAdded: true
+        isUserAdded: true,
+        isExchangeTraded: false
       };
     }
   });

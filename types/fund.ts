@@ -20,4 +20,5 @@ export interface FundData {
   monitoringEnabled?: boolean;  // Deprecated: use isMonitorEnabled instead
   oneYearChange?: number;  // 1-year percentage change
   oneYearChangeAvailable?: boolean;  // True if 1-year data exists
+  isExchangeTraded?: boolean;
 }

@@ -13,6 +13,7 @@ export interface Fund {
   hasSettings?: boolean;
   oneYearChange?: number;  // 1-year percentage change
   oneYearChangeAvailable?: boolean;  // True if 1-year data exists
+  isExchangeTraded: boolean;
 }
 
 export interface StatItem {

@@ -53,6 +53,7 @@ export const FundRow: React.FC<FundRowProps> = ({ fund, onDelete, onToggle }) =>
     isWatchlisted: false,
     oneYearChange: fund.oneYearChange,
     oneYearChangeAvailable: fund.oneYearChangeAvailable,
+    isExchangeTraded: fund.isExchangeTraded,
   };
 
   return (
