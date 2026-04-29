@@ -1362,21 +1362,24 @@ async def get_qdii_funds(codes: str = None):
             if fund_info:
                 funds_to_process.append(fund_info)
             else:
-                # 从AKShare获取基金名称
+                # Unknown codes should not synchronously refresh the full AKShare table.
+                # Reuse warm cache if available; otherwise fall back to a placeholder name.
                 fund_name = f"基金{code}"
                 try:
                     global akshare_cache, akshare_cache_time
                     current_time = datetime.now().timestamp()
-                    if akshare_cache is None or (current_time - akshare_cache_time > AKSHARE_CACHE_DURATION):
-                        akshare_cache = ak.fund_open_fund_daily_em()
-                        akshare_cache_time = current_time
-                    
-                    fund_data = akshare_cache[akshare_cache['基金代码'] == code]
-                    if not fund_data.empty:
-                        fund_name = fund_data['基金简称'].values[0]
-                except:
+                    cache_fresh = (
+                        akshare_cache is not None
+                        and akshare_cache_time is not None
+                        and (current_time - akshare_cache_time <= AKSHARE_CACHE_DURATION)
+                    )
+                    if cache_fresh:
+                        fund_data = akshare_cache[akshare_cache['基金代码'] == code]
+                        if not fund_data.empty:
+                            fund_name = fund_data['基金简称'].values[0]
+                except Exception:
                     pass
-                
+
                 funds_to_process.append({'code': code, 'name': fund_name})
     else:
         funds_to_process = data.funds_loader.QDII_FUNDS
