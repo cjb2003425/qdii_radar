@@ -263,6 +263,9 @@ async def lifespan(app: FastAPI):
     # Load recipients from file
     load_recipients_from_file()
 
+    # Load persisted limit/NAV cache from disk
+    load_limit_cache_store()
+
     await monitor.initialize()
 
     # Auto-start monitoring if enabled
@@ -642,10 +645,36 @@ def fetch_nav_from_akshare(code: str) -> tuple:
 # ============================================================================
 
 LIMIT_CACHE_DURATION = 900  # 15 minutes
+LIMIT_CACHE_FILE = Path(__file__).parent / "data" / "fund_limit_cache.json"
 
 limit_cache_store: Dict[str, Dict] = {}
 limit_refresh_inflight: set[str] = set()
 history_refresh_inflight: set[str] = set()
+
+
+def load_limit_cache_store() -> None:
+    """Load persisted limit/NAV cache from disk."""
+    global limit_cache_store
+    try:
+        if not LIMIT_CACHE_FILE.exists():
+            return
+        with open(LIMIT_CACHE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            limit_cache_store = data
+            logger.info(f"Loaded limit cache from disk: {len(limit_cache_store)} entries")
+    except Exception as e:
+        logger.warning(f"Failed to load limit cache from disk: {e}")
+
+
+def persist_limit_cache_store() -> None:
+    """Persist limit/NAV cache to disk."""
+    try:
+        LIMIT_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(LIMIT_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(limit_cache_store, f, ensure_ascii=False)
+    except Exception as e:
+        logger.warning(f"Failed to persist limit cache to disk: {e}")
 
 
 def get_cached_limit(code: str) -> dict:
@@ -677,6 +706,7 @@ def set_cached_limit(code: str, value: str, nav: float = None, nav_rate: float =
         "nav_rate": nav_rate,
         "timestamp": datetime.utcnow().timestamp(),
     }
+    persist_limit_cache_store()
 
 
 # ============================================================================
