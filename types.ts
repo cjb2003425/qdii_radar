@@ -11,8 +11,8 @@ export interface Fund {
   limitStatus: 'warning' | 'danger' | 'neutral' | 'info'; // Determines badge color
   isMonitorEnabled: boolean;
   hasSettings?: boolean;
-  oneYearChange?: number;  // 1-year percentage change
-  oneYearChangeAvailable?: boolean;  // True if 1-year data exists
+  ytdChange?: number;  // YTD percentage change
+  ytdChangeAvailable?: boolean;  // True if YTD data exists
   isExchangeTraded: boolean;
 }
 

@@ -291,6 +291,8 @@ function mergeUserFundsWithBackendData(userFunds: ReturnType<typeof getUserFunds
         isWatchlisted: false,
         isMonitorEnabled: backendFund.isMonitorEnabled || false,
         isUserAdded: true,
+        ytdChange: backendFund.ytdChange || 0,
+        ytdChangeAvailable: backendFund.ytdChangeAvailable || false,
         isExchangeTraded: backendFund.isExchangeTraded || false
       };
     } else {
@@ -309,6 +311,8 @@ function mergeUserFundsWithBackendData(userFunds: ReturnType<typeof getUserFunds
         isWatchlisted: false,
         isMonitorEnabled: false,
         isUserAdded: true,
+        ytdChange: 0,
+        ytdChangeAvailable: false,
         isExchangeTraded: false
       };
     }

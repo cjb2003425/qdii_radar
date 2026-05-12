@@ -857,10 +857,11 @@ def schedule_history_refresh(codes: List[str], exchange_traded_flags: Dict[str, 
 
 
 # ============================================================================
-# Historical NAV Data Fetching (for 1-Year Percentage Change)
+# Historical NAV Data Fetching (for YTD Percentage Change)
 # ============================================================================
 
 HISTORICAL_CACHE_DURATION = 86400  # 24 hours
+CURRENT_HISTORICAL_METRIC_SEMANTIC = "ytd_v1"
 
 
 def get_historical_cache(session, fund_code: str):
@@ -871,9 +872,14 @@ def get_historical_cache(session, fund_code: str):
     try:
         cached = session.query(HistoricalNavCache).filter_by(fund_code=fund_code).first()
         if cached:
-            # Check if cache is still valid (24 hours)
             cache_age = (datetime.utcnow() - cached.cached_at).total_seconds()
             if cache_age < HISTORICAL_CACHE_DURATION:
+                if cached.metric_semantic != CURRENT_HISTORICAL_METRIC_SEMANTIC:
+                    logger.info(
+                        f"Ignoring historical cache for {fund_code} due to semantic mismatch: "
+                        f"{cached.metric_semantic!r} != {CURRENT_HISTORICAL_METRIC_SEMANTIC!r}"
+                    )
+                    return None
                 logger.debug(f"Using cached historical data for {fund_code} ({cache_age:.0f}s old)")
                 return {
                     'percentage_change': cached.percentage_change,
@@ -897,13 +903,15 @@ def set_historical_cache(session, fund_code: str, nav_1_year_ago: float, percent
             existing.nav_1_year_ago = nav_1_year_ago
             existing.percentage_change = percentage_change
             existing.days_calculated = days_calculated
+            existing.metric_semantic = CURRENT_HISTORICAL_METRIC_SEMANTIC
             existing.cached_at = datetime.utcnow()
         else:
             new_cache = HistoricalNavCache(
                 fund_code=fund_code,
                 nav_1_year_ago=nav_1_year_ago,
                 percentage_change=percentage_change,
-                days_calculated=days_calculated
+                days_calculated=days_calculated,
+                metric_semantic=CURRENT_HISTORICAL_METRIC_SEMANTIC
             )
             session.add(new_cache)
         session.commit()
@@ -925,7 +933,7 @@ def fetch_historical_nav_eastmoney(code: str, days: int = 365) -> dict:
         }
         or None if fetch fails.
     """
-    from datetime import datetime, timedelta
+    del days
 
     try:
         # Use AKShare to get historical cumulative NAV data
@@ -934,41 +942,30 @@ def fetch_historical_nav_eastmoney(code: str, days: int = 365) -> dict:
         df = ak.fund_open_fund_info_em(symbol=code, indicator="累计净值走势", period="三年")
 
         if df is not None and not df.empty and len(df) > 1:
-            # Convert date strings to datetime for comparison
+            df = df.copy()
             df['净值日期_dt'] = pd.to_datetime(df['净值日期'])
 
-            # Filter to only get data from approximately the last 'days' (365)
-            # Get the newest date first
-            newest_date = df.iloc[-1]['净值日期_dt']
-            cutoff_date = newest_date - timedelta(days=days + 30)  # Add buffer to ensure we get enough data
+            current_year = datetime.now().year
+            df_current_year = df[df['净值日期_dt'].dt.year == current_year].copy()
 
-            # Filter to keep only recent data (within cutoff + buffer)
-            df_filtered = df[df['净值日期_dt'] >= cutoff_date].copy()
-
-            if df_filtered.empty or len(df_filtered) < 2:
-                logger.warning(f"Not enough recent data for {code}")
+            if df_current_year.empty or len(df_current_year) < 2:
+                logger.warning(f"Not enough current-year cumulative NAV data for {code}")
                 return None
 
-            # Get current cumulative NAV from the LAST row (newest)
-            nav_current = float(df_filtered.iloc[-1]['累计净值'])
-            current_date = df_filtered.iloc[-1]['净值日期']
+            nav_base = float(df_current_year.iloc[0]['累计净值'])
+            base_date = df_current_year.iloc[0]['净值日期']
+            nav_current = float(df_current_year.iloc[-1]['累计净值'])
+            current_date = df_current_year.iloc[-1]['净值日期']
 
-            # Find cumulative NAV from approximately 1 year ago
-            one_year_ago_target = datetime.now() - timedelta(days=days)
-            df_filtered['time_diff'] = abs(df_filtered['净值日期_dt'] - one_year_ago_target)
-            closest_idx = df_filtered['time_diff'].idxmin()
-            nav_1_year_ago = float(df_filtered.loc[closest_idx, '累计净值'])
-            past_date = df_filtered.loc[closest_idx, '净值日期']
+            if nav_base > 0:
+                percentage_change = ((nav_current - nav_base) / nav_base) * 100
+                days_found = len(df_current_year)
 
-            if nav_1_year_ago > 0:
-                # Calculate percentage change: (current - old) / old * 100
-                # The BASE is nav_1_year_ago (NAV from 1 year ago)
-                percentage_change = ((nav_current - nav_1_year_ago) / nav_1_year_ago) * 100
-                days_found = len(df_filtered)
-
-                logger.info(f"Fetched historical cumulative NAV for {code}: {nav_1_year_ago:.4f} ({past_date}) → {nav_current:.4f} ({current_date}) = {percentage_change:.2f}% over {days_found} trading days")
+                logger.info(
+                    f"Fetched YTD cumulative NAV for {code}: {nav_base:.4f} ({base_date}) → {nav_current:.4f} ({current_date}) = {percentage_change:.2f}% over {days_found} trading days"
+                )
                 return {
-                    'nav_1_year_ago': nav_1_year_ago,
+                    'nav_1_year_ago': nav_base,
                     'percentage_change': round(percentage_change, 2),
                     'days_found': days_found
                 }
@@ -1028,11 +1025,11 @@ def fetch_historical_etf_price(code: str, days: int = 365) -> dict:
 
 def get_one_year_change(code: str, is_exchange_traded: bool) -> dict:
     """
-    Get 1-year percentage change for a fund using the correct history path.
+    Get YTD percentage change for a fund using cumulative NAV history.
 
     Args:
         code: Fund code
-        is_exchange_traded: True if fund is ETF/LOF
+        is_exchange_traded: retained for API compatibility; ignored for YTD calculation
 
     Returns:
         {
@@ -1040,6 +1037,7 @@ def get_one_year_change(code: str, is_exchange_traded: bool) -> dict:
             'available': bool
         }
     """
+    del is_exchange_traded
     from notifications.models import get_db
 
     session = get_db()
@@ -1052,10 +1050,10 @@ def get_one_year_change(code: str, is_exchange_traded: bool) -> dict:
                 'available': True
             }
 
-        hist_data = fetch_historical_etf_price(code) if is_exchange_traded else fetch_historical_nav_eastmoney(code)
+        hist_data = fetch_historical_nav_eastmoney(code)
 
         if hist_data:
-            base_value = hist_data.get('price_1_year_ago', hist_data.get('nav_1_year_ago', 0))
+            base_value = hist_data.get('nav_1_year_ago', 0)
             set_historical_cache(
                 session,
                 code,
@@ -1073,7 +1071,7 @@ def get_one_year_change(code: str, is_exchange_traded: bool) -> dict:
                 'available': False
             }
     except Exception as e:
-        logger.error(f"Error getting 1-year change for {code}: {e}")
+        logger.error(f"Error getting YTD change for {code}: {e}")
         return {
             'percentage_change': 0,
             'available': False
@@ -1512,8 +1510,8 @@ async def get_qdii_funds(codes: str = None):
             "marketPriceRate": round(cached_nav_rate, 2) if cached_nav else 0,
             "limitText": cached_limit["value"],
             "isWatchlisted": False,
-            "oneYearChange": 0,
-            "oneYearChangeAvailable": False,
+            "ytdChange": 0,
+            "ytdChangeAvailable": False,
             "isExchangeTraded": False,
             "exchangeTradedCandidate": exchange_traded_candidate
         }
@@ -1619,19 +1617,39 @@ async def get_qdii_funds(codes: str = None):
     finally:
         session.close()
 
-    # Add 1-year percentage change data (cache-first)
+    # Add YTD percentage change data (cache-first, with small cold-cache sync fill)
     exchange_traded_flags = {}
+    funds_by_code = {}
+    cold_missing_history_codes = []
+    stale_history_codes = []
     for fund in funds:
-        exchange_traded_flags[fund["code"]] = fund.get("isExchangeTraded", False)
-        cached_hist = get_cached_one_year_change(fund["code"])
-        fund["oneYearChange"] = cached_hist["value"]
-        fund["oneYearChangeAvailable"] = cached_hist["available"]
-        if not cached_hist["fresh"]:
-            missing_history_codes.append(fund["code"])
+        code = fund["code"]
+        exchange_traded_flags[code] = fund.get("isExchangeTraded", False)
+        funds_by_code[code] = fund
+        cached_hist = get_cached_one_year_change(code)
+        fund["ytdChange"] = cached_hist["value"]
+        fund["ytdChangeAvailable"] = cached_hist["available"]
+        if not cached_hist["exists"]:
+            cold_missing_history_codes.append(code)
+        elif not cached_hist["fresh"]:
+            stale_history_codes.append(code)
+
+    sync_fill_limit = 3
+    history_codes_for_background_refresh = list(stale_history_codes)
+    if 0 < len(cold_missing_history_codes) <= sync_fill_limit:
+        for code in cold_missing_history_codes:
+            hist_data = get_one_year_change(code, exchange_traded_flags.get(code, False))
+            fund = funds_by_code.get(code)
+            if fund is not None:
+                fund["ytdChange"] = hist_data["percentage_change"]
+                fund["ytdChangeAvailable"] = hist_data["available"]
+    else:
+        history_codes_for_background_refresh.extend(cold_missing_history_codes)
 
     # Schedule background refreshes for missing/stale slow fields
     schedule_limit_refresh(missing_limit_codes)
-    schedule_history_refresh(missing_history_codes, exchange_traded_flags)
+    if history_codes_for_background_refresh:
+        schedule_history_refresh(history_codes_for_background_refresh, exchange_traded_flags)
 
     funds.sort(key=lambda x: (-x["marketPrice"] == 0, -x["premiumRate"]))
 

@@ -99,17 +99,18 @@ class FundTrigger(Base):
 
 
 class HistoricalNavCache(Base):
-    """Cache for historical NAV data to calculate 1-year percentage change."""
+    """Cache for historical NAV data to calculate percentage change metrics."""
     __tablename__ = 'historical_nav_cache'
 
     fund_code = Column(String(20), primary_key=True, nullable=False)
-    nav_1_year_ago = Column(Float, nullable=True)  # NAV value from ~1 year ago
-    percentage_change = Column(Float, nullable=False, default=0)  # 1-year percentage change
-    days_calculated = Column(Integer, nullable=False, default=0)  # Actual trading days found
+    nav_1_year_ago = Column(Float, nullable=True)  # Historical base NAV used for current metric semantic
+    percentage_change = Column(Float, nullable=False, default=0)
+    days_calculated = Column(Integer, nullable=False, default=0)
+    metric_semantic = Column(String(32), nullable=True)  # e.g. ytd_v1
     cached_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     def __repr__(self):
-        return f"<HistoricalNavCache(code={self.fund_code}, change={self.percentage_change}%, days={self.days_calculated})>"
+        return f"<HistoricalNavCache(code={self.fund_code}, change={self.percentage_change}%, days={self.days_calculated}, semantic={self.metric_semantic})>"
 
 
 # Database setup
@@ -126,6 +127,15 @@ def init_db():
     """Initialize database and create tables."""
     try:
         Base.metadata.create_all(bind=engine)
+
+        # Lightweight schema backfill for existing SQLite databases
+        with engine.connect() as conn:
+            columns = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(historical_nav_cache)").fetchall()]
+            if columns and 'metric_semantic' not in columns:
+                conn.exec_driver_sql("ALTER TABLE historical_nav_cache ADD COLUMN metric_semantic VARCHAR(32)")
+                conn.commit()
+                logger.info("Added metric_semantic column to historical_nav_cache")
+
         logger.info("Database initialized successfully")
 
         # Insert default configuration

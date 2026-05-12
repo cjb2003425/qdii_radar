@@ -51,8 +51,8 @@ export const FundRow: React.FC<FundRowProps> = ({ fund, onDelete, onToggle }) =>
     premiumRate: fund.premiumRate,
     limitText: fund.limitTag || '—',
     isWatchlisted: false,
-    oneYearChange: fund.oneYearChange,
-    oneYearChangeAvailable: fund.oneYearChangeAvailable,
+    ytdChange: fund.ytdChange,
+    ytdChangeAvailable: fund.ytdChangeAvailable,
     isExchangeTraded: fund.isExchangeTraded,
   };
 
@@ -111,9 +111,9 @@ export const FundRow: React.FC<FundRowProps> = ({ fund, onDelete, onToggle }) =>
           </div>
         </td>
         <td className="py-2.5 px-4 align-middle">
-          {fund.oneYearChangeAvailable ? (
-            <span className={`text-[13px] font-bold font-mono tabular-nums ${getColor(fund.oneYearChange || 0)}`}>
-              {formatPercent(fund.oneYearChange || 0)}
+          {fund.ytdChangeAvailable ? (
+            <span className={`text-[13px] font-bold font-mono tabular-nums ${getColor(fund.ytdChange || 0)}`}>
+              {formatPercent(fund.ytdChange || 0)}
             </span>
           ) : (
             <span className="text-slate-300 text-[13px]">—</span>
@@ -213,12 +213,12 @@ export const FundRow: React.FC<FundRowProps> = ({ fund, onDelete, onToggle }) =>
                  </div>
             </div>
 
-            {/* 1-Year Change - Separate Row for Mobile */}
+            {/* YTD Change - Separate Row for Mobile */}
             <div className="mt-1.5 flex items-center justify-between bg-slate-50 rounded-lg px-2 py-1.5 border border-slate-100">
-              <span className="text-[8px] text-slate-400">1年期</span>
-              {fund.oneYearChangeAvailable ? (
-                <span className={`text-[11px] font-bold font-mono ${getColor(fund.oneYearChange || 0)}`}>
-                  {formatPercent(fund.oneYearChange || 0)}
+              <span className="text-[8px] text-slate-400">今年来</span>
+              {fund.ytdChangeAvailable ? (
+                <span className={`text-[11px] font-bold font-mono ${getColor(fund.ytdChange || 0)}`}>
+                  {formatPercent(fund.ytdChange || 0)}
                 </span>
               ) : (
                 <span className="text-[11px] text-slate-300">—</span>

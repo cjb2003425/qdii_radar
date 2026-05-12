@@ -338,7 +338,7 @@ This pattern is used in `services/fundApiService.ts` for lookup and add operatio
 - 全部基金 tab: NAV% descending
 - 纳斯达克 tab: NAV% descending
 - 场内基金 tab: Premium rate descending
-- **1年期 (1-Year)**: Sorts by cumulative NAV-based 1-year percentage change (accounts for dividends)
+- **今年来 (YTD)**: Sorts by cumulative NAV-based year-to-date percentage change (accounts for dividends)
 
 **Sorting Implementation** (App.tsx):
 ```typescript
@@ -350,9 +350,9 @@ switch (sortColumn) {
   case 'price': aValue = a.priceChangePercent; break;      // NOT a.price
   case 'netValue': aValue = a.netValueChangePercent; break;  // NOT a.netValue
   case 'premiumRate': aValue = a.premiumRate; break;
-  case 'oneYearChange':  // 1-year cumulative NAV percentage change (accounts for dividends)
-    aValue = a.oneYearChangeAvailable ? a.oneYearChange || 0 : -999;
-    bValue = b.oneYearChangeAvailable ? b.oneYearChange || 0 : -999;
+  case 'ytdChange':  // YTD cumulative NAV percentage change (accounts for dividends)
+    aValue = a.ytdChangeAvailable ? a.ytdChange || 0 : -999;
+    bValue = b.ytdChangeAvailable ? b.ytdChange || 0 : -999;
     break;
   case 'name': aValue = a.name; break;  // Only text column sorts by value
 }
@@ -372,28 +372,28 @@ const handleTabChange = (tabId: string) => {
 
 **Critical**: When adding sortable columns, determine if it should sort by percentage change or absolute value. Users expect percentage-based sorting for price/NAV columns to quickly identify best/worst performers.
 
-### 1-Year Percentage Change Column
+### YTD Percentage Change Column
 
-**Purpose**: Display annual NAV performance for all funds using consistent NAV-based calculation.
+**Purpose**: Display year-to-date NAV performance for all funds using consistent cumulative-NAV calculation.
 
 **Calculation**:
-- Formula: `(current_NAV - NAV_1yr_ago) / NAV_1yr_ago × 100`
-- **Base (denominator)**: NAV from one year ago (not current NAV)
-- All funds use NAV-based change (ETFs use NAV, not trading price)
+- Formula: `(current_NAV - NAV_at_first_trading_day_of_current_year) / NAV_at_first_trading_day_of_current_year × 100`
+- **Base (denominator)**: the first available cumulative NAV in the current year
+- All funds use cumulative NAV-based change, including ETFs/LOFs
 - Data cached for 24 hours in `historical_nav_cache` table
 - Fetched via `fetch_historical_nav_eastmoney()` using AKShare's `fund_open_fund_info_em()`
 
 **Data Flow**:
 1. Backend calls `get_one_year_change(code, is_exchange_traded)` for each fund
 2. Checks `historical_nav_cache` table for valid cache (< 24 hours old)
-3. On cache miss: fetches from AKShare, stores in database
+3. On cache miss: fetches current-year cumulative NAV history from AKShare, stores in database
 4. Frontend displays with color coding (red=positive, green=negative)
 5. Funds without data show "—" and sort to bottom (-999 sentinel value)
 
 **Implementation Notes**:
 - AKShare's `fund_open_fund_info_em()` returns data with **oldest first, newest last**
-- Use `df.iloc[-1]` for current NAV (newest row)
-- Find closest date to target (1 year ago) using time difference calculation
+- Filter rows to the current year
+- Use the first current-year row as base NAV and the last current-year row as current NAV
 - Sorting places funds without data at bottom when descending
 
 ## Data Structures
@@ -413,8 +413,8 @@ const handleTabChange = (tabId: string) => {
   isWatchlisted: boolean;
   isMonitorEnabled?: boolean;  // Monitoring status from database (CRITICAL: persists to DB)
   isUserAdded?: boolean; // User-added vs preset fund
-  oneYearChange?: number;  // 1-year cumulative NAV percentage change (accounts for dividends)
-  oneYearChangeAvailable?: boolean;  // True if historical data exists
+  ytdChange?: number;  // YTD cumulative NAV percentage change (accounts for dividends)
+  ytdChangeAvailable?: boolean;  // True if YTD historical data exists
 }
 ```
 
@@ -424,7 +424,7 @@ const handleTabChange = (tabId: string) => {
 - `isExchangeTraded === true` → Fund has a confirmed real-time trading quote and should be treated as exchange-traded in UI
 - `isExchangeTraded === false` → Fund should be treated as NAV-based in UI, even if code/name heuristics suggest LOF/ETF
 - `marketPrice > 0` → Fund has NAV data (all funds should have this)
-- `oneYearChange` → Cumulative NAV-based 1-year performance, calculated as (current_cumulative_NAV - cumulative_NAV_1yr_ago) / cumulative_NAV_1yr_ago × 100
+- `ytdChange` → Cumulative NAV-based YTD performance, calculated as (current_cumulative_NAV - first_current_year_cumulative_NAV) / first_current_year_cumulative_NAV × 100
   - Uses cumulative NAV (累计净值) to account for dividend distributions, not unit NAV (单位净值)
 
 ### Backend Response Structure

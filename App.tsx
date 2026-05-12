@@ -30,8 +30,8 @@ const mapFundDataToFund = (data: FundData): Fund => {
     limitStatus: getLimitStatus(data.limitText),
     isMonitorEnabled: data.isMonitorEnabled || false,
     hasSettings: true,
-    oneYearChange: data.oneYearChange || 0,
-    oneYearChangeAvailable: data.oneYearChangeAvailable || false,
+    ytdChange: data.ytdChange || 0,
+    ytdChangeAvailable: data.ytdChangeAvailable || false,
     isExchangeTraded: data.isExchangeTraded || false,
   };
 };
@@ -97,10 +97,10 @@ const App: React.FC = () => {
         aValue = a.premiumRate;
         bValue = b.premiumRate;
         break;
-      case 'oneYearChange':
+      case 'ytdChange':
         // Funds without data sort to bottom
-        aValue = a.oneYearChangeAvailable ? a.oneYearChange || 0 : -999;
-        bValue = b.oneYearChangeAvailable ? b.oneYearChange || 0 : -999;
+        aValue = a.ytdChangeAvailable ? a.ytdChange || 0 : -999;
+        bValue = b.ytdChangeAvailable ? b.ytdChange || 0 : -999;
         break;
       default:
         return 0;
@@ -359,7 +359,7 @@ const App: React.FC = () => {
                         { label: '现价', width: 'w-[14%]', column: 'price' },
                         { label: '净值', width: 'w-[14%]', column: 'netValue' },
                         { label: '溢价率', width: 'w-[14%]', column: 'premiumRate' },
-                        { label: '1年期', width: 'w-[14%]', column: 'oneYearChange' },
+                        { label: '今年来', width: 'w-[14%]', column: 'ytdChange' },
                         { label: '操作', width: 'w-[100px]', column: null }
                       ].map((header, i) => (
                         <th

@@ -2,15 +2,16 @@
  * API Configuration
  *
  * Determines whether to use relative or absolute URLs based on environment:
- * - Development: Uses absolute URL (http://127.0.0.1:8088) to connect directly to backend
+ * - Development: Uses absolute URL (http://127.0.0.1:8088) only for true local development
  * - Production: Uses relative paths (/api/*) to leverage nginx reverse proxy
  */
 
 import { API_CONFIG as FUNDS_API_CONFIG } from '../data/funds';
 
 /**
- * Checks if the application is running in development mode.
- * Development mode is detected when accessed via localhost, local network IPs, or running in Vite dev server.
+ * Checks if the application is running in true local development mode.
+ * Only localhost / 127.0.0.1 (or Vite dev server) should bypass nginx and call the backend directly.
+ * Access via LAN IP or production host must still use relative /api paths.
  */
 function isDevelopment(): boolean {
   const hostname = window.location.hostname;
@@ -20,27 +21,14 @@ function isDevelopment(): boolean {
     return true;
   }
 
-  // Localhost access
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return true;
-  }
-
-  // Local network access (10.x.x.x, 192.168.x.x, 172.16-31.x.x)
-  if (
-    /^10\./.test(hostname) ||
-    /^192\.168\./.test(hostname) ||
-    /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname)
-  ) {
-    return true;
-  }
-
-  return false;
+  // True local development only
+  return hostname === 'localhost' || hostname === '127.0.0.1';
 }
 
 /**
  * Computes the appropriate base URL for API requests.
  *
- * In development: Returns the backend's absolute URL (e.g., "http://127.0.0.1:8088" or "http://10.0.0.9:8088")
+ * In development: Returns the backend's absolute URL (e.g., "http://127.0.0.1:8088")
  * In production: Returns empty string to use relative paths (e.g., "/api/funds")
  */
 function getBaseUrl(): string {
@@ -49,7 +37,7 @@ function getBaseUrl(): string {
     return '';
   }
 
-  // Development: use backend URL from config but replace host if accessing from network
+  // Development: use backend URL from config directly
   const backendUrl = FUNDS_API_CONFIG.BACKEND_URL;
 
   // If config already has relative path, respect it
@@ -60,14 +48,6 @@ function getBaseUrl(): string {
   // Extract base URL (e.g., "http://127.0.0.1:8088/api/funds" -> "http://127.0.0.1:8088")
   const urlParts = backendUrl.split('/api/');
   let baseUrl = urlParts[0];
-
-  // If accessing from local network, replace 127.0.0.1 with actual hostname
-  const currentHostname = window.location.hostname;
-  if (currentHostname !== 'localhost' && currentHostname !== '127.0.0.1') {
-    // Replace the host in backend URL with current hostname
-    const url = new URL(baseUrl);
-    baseUrl = `${url.protocol}//${currentHostname}:${url.port || (url.protocol === 'https:' ? '443' : '80')}`;
-  }
 
   return baseUrl;
 }
