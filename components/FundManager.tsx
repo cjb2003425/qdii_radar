@@ -13,7 +13,6 @@ interface Props {
 const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [] }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [code, setCode] = useState('');
-  const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
@@ -22,13 +21,24 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
   const [successMessage, setSuccessMessage] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const userFunds = getUserFunds();
+  const displayFunds = allFunds.map(fund => ({
+    ...fund,
+    isUserAdded: fund.isUserAdded ?? userFunds.some(uf => uf.code === fund.code),
+    isPreset: fund.isPreset ?? !(fund.isUserAdded ?? userFunds.some(uf => uf.code === fund.code))
+  }));
+
+  const selectedFundItems = displayFunds.filter(fund => selectedFunds.has(fund.code));
+  const selectedUserFunds = selectedFundItems.filter(fund => fund.isUserAdded);
+  const selectedPresetFunds = selectedFundItems.filter(fund => !fund.isUserAdded);
+
   const handleAddFund = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccessMessage('');
 
     const trimmedCode = code.trim();
-    
+
     if (!trimmedCode) {
       setError('请输入基金代码');
       return;
@@ -52,10 +62,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
         return;
       }
 
-      // 从后端获取真实基金名称
       const lookupResult = await lookupFund(trimmedCode);
-
-      // 如果基金未找到，警告用户
       if (!lookupResult.found) {
         setError(`未找到基金代码 ${trimmedCode} 的信息。\n\n这可能是因为：\n• 基金代码不存在\n• 基金已终止或清盘\n• 基金尚未上市`);
         setLoading(false);
@@ -64,36 +71,26 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
       }
 
       const fundName = lookupResult.name;
-
-      // Call backend API FIRST to add to funds.json
       const addResult = await addFundToBackend(trimmedCode, fundName);
       if (!addResult.success) {
         throw new Error(addResult.message || '后端添加基金失败');
       }
 
-      // Only update localStorage after backend confirms
       const newUserFund = addUserFund(trimmedCode, fundName);
-      
-      // 清空输入框，但保持弹窗打开状态，允许连续添加
       setCode('');
       setSuccessMessage(`成功添加: ${fundName}`);
       setError('');
       setLoading(false);
       setIsLookingUp(false);
-
-      // 触发父组件刷新数据，以立即获取新基金的NAV和限额
       onFundAdded?.(newUserFund.code, newUserFund.name);
 
-      // 聚焦回输入框，方便继续输入
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
-      
-      // 3秒后清除成功消息
+
       setTimeout(() => {
         setSuccessMessage('');
       }, 3000);
-      
     } catch (err) {
       console.error('添加基金详细错误:', err);
       if (err instanceof Error) {
@@ -106,24 +103,31 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
     }
   };
 
-  const handleRemoveFund = async (fundCode: string, isUserAdded: boolean) => {
-    if (window.confirm(`确定要删除基金 ${fundCode} 吗？`)) {
-      try {
-        // Call backend API FIRST to delete from funds.json and monitoring database
-        const deleteResult = await deleteFundFromBackend(fundCode);
+  const handleRemoveFund = async (fund: FundData) => {
+    if (!fund.isUserAdded) {
+      setError(`❌ 预设基金不可永久删除：${fund.code} ${fund.name}`);
+      setTimeout(() => setError(''), 5000);
+      return;
+    }
 
-        if (!deleteResult.success) {
-          throw new Error(deleteResult.message || '后端删除基金失败');
-        }
+    const confirmMessage = `确定要永久删除以下自定义基金吗？\n\n${fund.code} ${fund.name}`;
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
 
-        // Only update localStorage after backend confirms
-        removeUserFund(fundCode);
-        onFundRemoved?.(fundCode);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : '删除失败';
-        setError(`❌ 删除基金 ${fundCode} 失败: ${errorMessage}`);
-        setTimeout(() => setError(''), 5000);
+    try {
+      console.log('🗑️ Requesting single delete:', [fund.code]);
+      const deleteResult = await deleteFundFromBackend(fund.code);
+      if (!deleteResult.success) {
+        throw new Error(deleteResult.message || '后端删除基金失败');
       }
+
+      removeUserFund(fund.code);
+      onFundRemoved?.(fund.code);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '删除失败';
+      setError(`❌ 删除基金 ${fund.code} 失败: ${errorMessage}`);
+      setTimeout(() => setError(''), 5000);
     }
   };
 
@@ -138,7 +142,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
   };
 
   const handleSelectAll = () => {
-    const currentFundCodes = allFunds.map(f => f.code);
+    const currentFundCodes = displayFunds.map(f => f.code);
     if (selectedFunds.size === currentFundCodes.length && currentFundCodes.every(code => selectedFunds.has(code))) {
       setSelectedFunds(new Set());
     } else {
@@ -149,43 +153,55 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
   const handleBatchDelete = async () => {
     if (selectedFunds.size === 0) return;
 
-    if (window.confirm(`确定要删除选中的 ${selectedFunds.size} 只基金吗？`)) {
-      const fundCodes = Array.from(selectedFunds);
+    if (selectedUserFunds.length === 0) {
+      setError('❌ 当前选中项均为预设基金。预设基金不可永久删除。');
+      setTimeout(() => setError(''), 5000);
+      return;
+    }
 
-      try {
-        // Call backend API FIRST to batch delete
-        const results = await batchDeleteFundsFromBackend(fundCodes);
+    const deleteList = selectedUserFunds.map(fund => `${fund.code} ${fund.name}`).join('\n');
+    const skippedList = selectedPresetFunds.map(fund => `${fund.code} ${fund.name}`).join('\n');
+    const confirmMessage = [
+      `确定要永久删除以下 ${selectedUserFunds.length} 只自定义基金吗？`,
+      '',
+      deleteList,
+      selectedPresetFunds.length > 0 ? `\n以下 ${selectedPresetFunds.length} 只预设基金将被跳过：\n${skippedList}` : ''
+    ].join('\n');
 
-        // Check if any deletions failed
-        const failedCodes = Object.entries(results).filter(([_, result]) => !result.success);
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
 
-        if (failedCodes.length > 0) {
-          const failedCodeList = failedCodes.map(([code]) => code).join(', ');
-          throw new Error(`以下基金删除失败: ${failedCodeList}`);
-        }
+    const fundCodes = selectedUserFunds.map(fund => fund.code);
 
-        // Only update localStorage after backend confirms
-        fundCodes.forEach(fundCode => {
-          removeUserFund(fundCode);
-          onFundRemoved?.(fundCode);
-        });
+    try {
+      console.log('🗑️ Requesting batch delete:', fundCodes);
+      const results = await batchDeleteFundsFromBackend(fundCodes);
+      const failedCodes = Object.entries(results).filter(([_, result]) => !result.success);
 
-        setSelectedFunds(new Set());
-        setIsBatchMode(false);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : '批量删除失败';
-        setError(`❌ ${errorMessage}`);
-        setTimeout(() => setError(''), 5000);
+      if (failedCodes.length > 0) {
+        const failedCodeList = failedCodes.map(([code]) => code).join(', ');
+        throw new Error(`以下基金删除失败: ${failedCodeList}`);
       }
+
+      fundCodes.forEach(fundCode => {
+        removeUserFund(fundCode);
+        onFundRemoved?.(fundCode);
+      });
+
+      if (selectedPresetFunds.length > 0) {
+        setSuccessMessage(`已删除 ${fundCodes.length} 只自定义基金，跳过 ${selectedPresetFunds.length} 只预设基金`);
+        setTimeout(() => setSuccessMessage(''), 4000);
+      }
+
+      setSelectedFunds(new Set());
+      setIsBatchMode(false);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '批量删除失败';
+      setError(`❌ ${errorMessage}`);
+      setTimeout(() => setError(''), 5000);
     }
   };
-
-  const userFunds = getUserFunds();
-
-  const displayFunds = allFunds.map(fund => ({
-    ...fund,
-    isUserAdded: userFunds.some(uf => uf.code === fund.code)
-  }));
 
   if (!isOpen) {
     return (
@@ -203,9 +219,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4 safe-area-all backdrop-blur-sm">
       <div className="bg-white rounded-2xl w-full max-w-lg sm:max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col border border-slate-200/60">
-        {/* Header */}
         <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 text-white px-3 py-2.5 sm:px-4 sm:py-3 shrink-0 relative overflow-hidden">
-          {/* Decorative background element */}
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
 
           <div className="flex justify-between items-center gap-2 relative z-10">
@@ -226,7 +240,6 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
         </div>
 
         <div className="p-2.5 sm:p-4 overflow-y-auto flex-1 bg-slate-50/30">
-          {/* Add Fund Form */}
           <div className="mb-3 sm:mb-4 bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-soft">
             <h3 className="text-xs sm:text-sm font-bold text-slate-800 mb-2 flex items-center gap-1.5">
               <Plus size={14} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
@@ -286,15 +299,14 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                 <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs">
                   <div className="flex items-center gap-1.5">
                     <Check size={14} className="sm:w-4 sm:h-4 shrink-0" strokeWidth={2.5} />
-                    <span className="flex-1">{successMessage}</span>
+                    <span className="flex-1 whitespace-pre-line">{successMessage}</span>
                   </div>
                 </div>
               )}
             </form>
           </div>
 
-          {/* All Funds List */}
-          {allFunds.length > 0 && (
+          {displayFunds.length > 0 && (
             <div>
               <div className="flex justify-between items-center mb-2 sm:mb-3 gap-2">
                 <h3 className="text-xs sm:text-sm font-bold text-slate-800">基金列表</h3>
@@ -313,7 +325,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                         onClick={handleSelectAll}
                         className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs font-semibold transition-colors min-h-[36px] sm:min-h-[44px] active:scale-95"
                       >
-                        {selectedFunds.size === allFunds.length ? '取消全选' : '全选'}
+                        {selectedFunds.size === displayFunds.length ? '取消全选' : '全选'}
                       </button>
                       <button
                         onClick={() => {
@@ -345,7 +357,7 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
               )}
 
               <div className="grid gap-1.5 sm:gap-2">
-                {allFunds.map((fund) => (
+                {displayFunds.map((fund) => (
                   <div
                     key={fund.code}
                     className={`bg-white border rounded-xl p-2 sm:p-2.5 transition-all shadow-sm hover:shadow-md ${
@@ -354,28 +366,34 @@ const FundManager: React.FC<Props> = ({ onFundAdded, onFundRemoved, allFunds = [
                   >
                     <div className="flex items-center gap-1.5 sm:gap-2">
                       {isBatchMode && (
-                        <div className="relative shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSelect(fund.code)}
+                          className="relative shrink-0"
+                        >
                           {selectedFunds.has(fund.code) ? (
                             <CheckSquare size={18} className="text-indigo-600" strokeWidth={2.5} />
                           ) : (
                             <Square size={18} className="text-slate-400" strokeWidth={2} />
                           )}
-                        </div>
+                        </button>
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 flex-wrap">
                           <span className="text-xs sm:text-sm font-bold text-slate-800 truncate">{fund.name}</span>
-                          {fund.isUserAdded && (
+                          {fund.isUserAdded ? (
                             <span className="bg-indigo-100 text-indigo-700 text-[9px] sm:text-xs px-1 py-0.5 sm:px-1.5 sm:py-0.5 rounded-full font-bold shrink-0">自定义</span>
+                          ) : (
+                            <span className="bg-slate-100 text-slate-600 text-[9px] sm:text-xs px-1 py-0.5 sm:px-1.5 sm:py-0.5 rounded-full font-bold shrink-0">预设</span>
                           )}
                         </div>
                         <div className="text-[10px] sm:text-xs text-slate-500 font-mono">{fund.code}</div>
                       </div>
-                      {!isBatchMode && (
+                      {!isBatchMode && fund.isUserAdded && (
                         <button
-                          onClick={() => handleRemoveFund(fund.code, fund.isUserAdded || false)}
+                          onClick={() => handleRemoveFund(fund)}
                           className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 sm:p-2 rounded-lg transition-all shrink-0 active:scale-95"
-                          title="删除基金"
+                          title="删除自定义基金"
                           style={{ minWidth: '36px', minHeight: '36px' }}
                         >
                           <Trash2 size={14} className="sm:w-4 sm:h-4" strokeWidth={2} />

@@ -33,6 +33,7 @@ const mapFundDataToFund = (data: FundData): Fund => {
     ytdChange: data.ytdChange || 0,
     ytdChangeAvailable: data.ytdChangeAvailable || false,
     isExchangeTraded: data.isExchangeTraded || false,
+    isUserAdded: data.isUserAdded || false,
   };
 };
 
@@ -426,7 +427,8 @@ const App: React.FC = () => {
           premiumRate: f.premiumRate,
           limitText: f.limitTag || '—',
           isWatchlisted: false,
-          isUserAdded: false
+          isUserAdded: f.isUserAdded || false,
+          isPreset: !(f.isUserAdded || false)
         }))}
       />
 

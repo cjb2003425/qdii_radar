@@ -8,6 +8,7 @@ export interface FundData {
   id: string;
   name: string;
   code: string;
+  isPreset?: boolean;
   valuation: number;
   valuationRate: number;
   premiumRate: number;

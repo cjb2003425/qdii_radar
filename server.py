@@ -31,6 +31,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+PRESET_FUND_DEFAULT = False
+
+
 # Chinese stock trading date cache
 _trading_dates_cache = {}
 _cache_date = None
@@ -1292,9 +1295,9 @@ async def add_fund(code: str, name: str):
         if existing_fund:
             logger.info(f"Fund {code} already exists in funds.json")
             return {"success": True, "message": "基金已存在", "fund": existing_fund}
-        
+
         # 添加新基金
-        new_fund = {"code": code, "name": name}
+        new_fund = {"code": code, "name": name, "isUserAdded": True}
         data["funds"].append(new_fund)
         
         # 保存到文件
@@ -1343,6 +1346,12 @@ async def delete_fund(code: str):
         existing_fund = next((f for f in data["funds"] if f["code"] == code), None)
         if not existing_fund:
             return {"success": False, "message": "基金不存在"}
+
+        is_user_added = bool(existing_fund.get("isUserAdded", False))
+        logger.info(f"Delete request received for fund {code}: isUserAdded={is_user_added}")
+        if not is_user_added:
+            logger.warning(f"Rejected deletion for preset fund {code}")
+            return {"success": False, "message": "预设基金不允许永久删除"}
 
         # 从funds.json中删除
         data["funds"] = [f for f in data["funds"] if f["code"] != code]
@@ -1478,7 +1487,7 @@ async def get_qdii_funds(codes: str = None):
                 except Exception:
                     pass
 
-                funds_to_process.append({'code': code, 'name': fund_name})
+                funds_to_process.append({'code': code, 'name': fund_name, 'isUserAdded': False})
     else:
         funds_to_process = data.funds_loader.QDII_FUNDS
     
@@ -1503,6 +1512,8 @@ async def get_qdii_funds(codes: str = None):
             "id": fund["code"],
             "name": fund["name"],
             "code": fund["code"],
+            "isUserAdded": bool(fund.get("isUserAdded", False)),
+            "isPreset": not bool(fund.get("isUserAdded", False)),
             "valuation": round(cached_nav, 4) if cached_nav else 0,
             "valuationRate": round(cached_nav_rate, 2) if cached_nav else 0,
             "premiumRate": 0,

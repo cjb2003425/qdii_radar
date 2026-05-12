@@ -207,7 +207,7 @@ export const fetchQDIIFunds = async (): Promise<FundData[]> => {
       const data = await response.json();
       console.log("📦 Backend returned:", data.length, "funds");
 
-      // Sync localStorage with backend data
+      // Sync localStorage with backend user-added funds only
       syncLocalStorageWithBackend(data);
 
       return data;
@@ -238,32 +238,30 @@ export const fetchQDIIFunds = async (): Promise<FundData[]> => {
 function syncLocalStorageWithBackend(backendData: FundData[]): void {
   try {
     const currentLocalStorage = getUserFunds();
-    const backendCodes = new Set(backendData.map(f => f.code));
+    const backendUserFunds = backendData.filter(f => f.isUserAdded);
+    const backendUserCodes = new Set(backendUserFunds.map(f => f.code));
 
-    // Funds in backend but not in localStorage - add them
-    const missingInLocalStorage = backendData.filter(f => !currentLocalStorage.some(lf => lf.code === f.code));
-
-    // Funds in localStorage but not in backend - remove them (unless they're user-added temporarily)
-    const extraInLocalStorage = currentLocalStorage.filter(lf => !backendCodes.has(lf.code));
+    const missingInLocalStorage = backendUserFunds.filter(f => !currentLocalStorage.some(lf => lf.code === f.code));
+    const extraInLocalStorage = currentLocalStorage.filter(lf => !backendUserCodes.has(lf.code));
 
     if (missingInLocalStorage.length > 0 || extraInLocalStorage.length > 0) {
-      console.log("🔄 Syncing localStorage with backend:");
+      console.log("🔄 Syncing localStorage with backend user funds:");
 
       if (missingInLocalStorage.length > 0) {
-        console.log(`  Adding ${missingInLocalStorage.length} funds from backend to localStorage`);
+        console.log(`  Adding ${missingInLocalStorage.length} user-added funds from backend to localStorage`);
         missingInLocalStorage.forEach(fund => {
           addUserFund(fund.code, fund.name);
         });
       }
 
       if (extraInLocalStorage.length > 0) {
-        console.log(`  Removing ${extraInLocalStorage.length} funds from localStorage (not in backend)`);
+        console.log(`  Removing ${extraInLocalStorage.length} stale user-added funds from localStorage`);
         extraInLocalStorage.forEach(fund => {
           removeUserFund(fund.code);
         });
       }
 
-      console.log("✅ LocalStorage synced with backend");
+      console.log("✅ LocalStorage synced with backend user funds");
     }
   } catch (error) {
     console.error("❌ Failed to sync localStorage with backend:", error);
@@ -290,7 +288,8 @@ function mergeUserFundsWithBackendData(userFunds: ReturnType<typeof getUserFunds
         limitText: backendFund.limitText,
         isWatchlisted: false,
         isMonitorEnabled: backendFund.isMonitorEnabled || false,
-        isUserAdded: true,
+        isUserAdded: backendFund.isUserAdded ?? true,
+        isPreset: backendFund.isPreset ?? false,
         ytdChange: backendFund.ytdChange || 0,
         ytdChangeAvailable: backendFund.ytdChangeAvailable || false,
         isExchangeTraded: backendFund.isExchangeTraded || false
@@ -311,6 +310,7 @@ function mergeUserFundsWithBackendData(userFunds: ReturnType<typeof getUserFunds
         isWatchlisted: false,
         isMonitorEnabled: false,
         isUserAdded: true,
+        isPreset: false,
         ytdChange: 0,
         ytdChangeAvailable: false,
         isExchangeTraded: false

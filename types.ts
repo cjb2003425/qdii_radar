@@ -14,6 +14,7 @@ export interface Fund {
   ytdChange?: number;  // YTD percentage change
   ytdChangeAvailable?: boolean;  // True if YTD data exists
   isExchangeTraded: boolean;
+  isUserAdded?: boolean;
 }
 
 export interface StatItem {

@@ -3,6 +3,7 @@ import fundsData from './funds.json';
 export interface Fund {
   code: string;
   name: string;
+  isUserAdded?: boolean;
 }
 
 export interface FundsData {
