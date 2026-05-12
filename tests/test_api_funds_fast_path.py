@@ -1,3 +1,4 @@
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -261,3 +262,27 @@ def test_schedule_history_refresh_skips_code_already_inflight(monkeypatch):
         assert scheduled == []
     finally:
         server.history_refresh_inflight.discard("513100")
+
+
+# ============================================================================
+# Test 7: ETF historical price order should use oldest as base, newest as current
+# ============================================================================
+
+def test_fetch_historical_etf_price_uses_oldest_close_as_base(monkeypatch):
+    df = pd.DataFrame(
+        [
+            {"日期": "2024-05-10", "收盘": 100.0},
+            {"日期": "2024-12-10", "收盘": 110.0},
+            {"日期": "2025-05-10", "收盘": 120.0},
+        ]
+    )
+    fake_ak = MagicMock()
+    fake_ak.fund_etf_hist_em.return_value = df
+    monkeypatch.setattr(server, "ak", fake_ak)
+
+    result = server.fetch_historical_etf_price("513100")
+
+    assert result is not None
+    assert result["price_1_year_ago"] == 100.0
+    assert result["percentage_change"] == 20.0
+    assert result["days_found"] == 3

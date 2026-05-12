@@ -1007,12 +1007,14 @@ def fetch_historical_etf_price(code: str, days: int = 365) -> dict:
         )
 
         if df is not None and not df.empty and len(df) > 1:
-            # Use closing price from oldest row
-            price_1_year_ago = df.iloc[-1]['收盘']
-            current_price = df.iloc[0]['收盘']
+            # AKShare ETF history is oldest first, newest last.
+            price_1_year_ago = float(df.iloc[0]['收盘'])
+            current_price = float(df.iloc[-1]['收盘'])
             percentage_change = ((current_price - price_1_year_ago) / price_1_year_ago) * 100
 
-            logger.info(f"Fetched historical ETF price for {code}: {percentage_change:.2f}% over {len(df)} days")
+            logger.info(
+                f"Fetched historical ETF price for {code}: {price_1_year_ago:.4f} → {current_price:.4f} = {percentage_change:.2f}% over {len(df)} days"
+            )
             return {
                 'price_1_year_ago': price_1_year_ago,
                 'percentage_change': round(percentage_change, 2),
@@ -1447,6 +1449,9 @@ async def get_qdii_funds(codes: str = None):
     获取基金数据
     codes: 可选的基金代码列表，逗号分隔。如果提供，只返回这些基金的数据
     """
+    if not limit_cache_store and LIMIT_CACHE_FILE.exists():
+        load_limit_cache_store()
+
     # 确定要处理的基金列表
     if codes:
         requested_codes = [code.strip() for code in codes.split(',')]
