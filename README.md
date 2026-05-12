@@ -162,6 +162,28 @@ Open your browser and navigate to:
 http://localhost:3002
 ```
 
+## 🧪 Testing
+
+### Backend safeguard regression tests
+
+Run the deletion safeguard regression tests:
+
+```bash
+pytest -q tests/test_delete_fund_safeguards.py tests/test_fund_manager_delete_safeguards.py
+```
+
+These tests cover:
+- preset funds cannot be permanently deleted
+- user-added funds can be deleted
+- FundManager only exposes delete actions for user-added funds
+- batch delete confirmation explicitly skips preset funds
+
+### Fast-path cache regression tests
+
+```bash
+pytest -q tests/test_api_funds_fast_path.py
+```
+
 ## 📖 API Endpoints
 
 ### Fund Data
